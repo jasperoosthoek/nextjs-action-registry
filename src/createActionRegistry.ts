@@ -2,6 +2,7 @@ import { runRevalidation, type RevalidationGroups } from './revalidation';
 import type { BaseContext, ScopeDefs, BoundScopes, ActionContext } from './context';
 import type { Adapter } from './adapter';
 import type { ActionFactory, ActionOptions } from './action';
+import { makeDefineResource, type DefineResource } from './defineResource';
 
 /**
  * The single injection point. The app wires its data client + auth
@@ -42,15 +43,13 @@ function bindScopes<Ctx, S extends ScopeDefs<Ctx>>(
   return bound as BoundScopes<S>;
 }
 
-/**
- * v0.0.1 returns `{ action }`. `defineResource` (which consumes `adapter` + the
- * writable-field contract) lands in v0.0.2.
- */
 export function createActionRegistry<
   DB,
   Ctx extends BaseContext<DB> = BaseContext<DB>,
   S extends ScopeDefs<Ctx> = {},
->(config: RegistryConfig<DB, Ctx, S>): { action: ActionFactory<Ctx, S> } {
+>(
+  config: RegistryConfig<DB, Ctx, S>,
+): { action: ActionFactory<Ctx, S>; defineResource: DefineResource<DB, Ctx, S> } {
   const groups = config.revalidation ?? {};
 
   const action: ActionFactory<Ctx, S> = (handler, options?: ActionOptions) => {
@@ -58,22 +57,31 @@ export function createActionRegistry<
       try {
         // createContext may throw on unauthenticated — that propagates.
         const base = await config.createContext();
-        const ctx = {
+        const ctx: ActionContext<Ctx, S> = {
           ...base,
           scope: bindScopes(config.scopes, base),
-        } as unknown as ActionContext<Ctx, S>;
+        };
 
         const result = await handler(ctx, ...args);
         // Only reached on success — a thrown handler skips revalidation.
         runRevalidation(options?.revalidate, groups, result);
         return result;
       } catch (err) {
-        // Telemetry only — never swallows, never sees the args (redaction).
-        config.onError?.(err, { action: handler.name || 'anonymous' });
+        // Telemetry only — never swallows, never REPLACES, never sees the args (redaction).
+        // Guarded so a throwing onError can't mask the real error.
+        if (config.onError) {
+          try {
+            config.onError(err, { action: options?.name || handler.name || 'anonymous' });
+          } catch {
+            // telemetry failures must never surface instead of the original error
+          }
+        }
         throw err;
       }
     };
   };
 
-  return { action };
+  const defineResource = makeDefineResource<DB, Ctx, S>(config.adapter, action);
+
+  return { action, defineResource };
 }

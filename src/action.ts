@@ -18,7 +18,15 @@ import type { ActionContext, ScopeDefs } from './context';
  * NEVER log them (inputs may hold sensitive data). Redacted telemetry belongs on the
  * registry-level `onError`, which is handed only `{ action }`.
  */
-export type ActionOptions = { revalidate?: RevalidationSpec };
+export type ActionOptions = {
+  revalidate?: RevalidationSpec;
+  /**
+   * Stable name surfaced to the registry-level `onError` as `{ action }`. Recommended, because
+   * `handler.name` is empty for the common `action(async (…) => …)` arrow. `defineResource`
+   * sets it to `"<table>.<op>"` automatically.
+   */
+  name?: string;
+};
 
 /**
  * The `action()` primitive, pre-bound to a registry's context/scopes/revalidation.

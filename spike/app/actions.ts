@@ -1,35 +1,26 @@
 'use server';
-// Server-action registration spike: does Next register factory-returned closures, exported
-// in each form, as Server Actions? We test three forms in one `'use server'` module.
+// Option A: op-named exports (no invented aliases). Call sites use `import * as tasks` to get
+// `tasks.create(...)` ergonomics. Next forbids exporting the `tasks` object itself, so each
+// generated action is its own named export.
 import { createActionRegistry } from '../../src/index';
+import { memAdapter } from './store';
 
-const { action } = createActionRegistry({
+type Task = { id: string; title: string; done: boolean; owner_id: string };
+
+const { defineResource } = createActionRegistry({
   createContext: async () => ({ db: null, userId: 'spike-user' }),
+  adapter: memAdapter,
+  revalidation: { tasks: { paths: ['/'] } }, // refresh the page after a mutation
 });
 
-// ── Form 1: HOF direct export (ecosystem-proven via next-safe-action) ──────────
-export const direct = action(async (_ctx, formData: FormData): Promise<void> => {
-  void formData.get('x');
+const tasks = defineResource<Task>()({
+  table: 'tasks',
+  scope: { column: 'owner_id' },
+  writableFields: ['title', 'done'],
+  actions: { list: true, create: true, remove: true },
+  revalidate: 'tasks',
 });
 
-// Stand-in for v0.0.2's defineResource: a factory returning an object of async fns.
-// The bundler behavior — not defineResource's real impl — is what this spike tests.
-function makeResource(table: string) {
-  return {
-    remove: async (formData: FormData): Promise<void> => {
-      void `${table}:remove:${formData.get('x')}`;
-    },
-    update: async (formData: FormData): Promise<void> => {
-      void `${table}:update:${formData.get('x')}`;
-    },
-  };
-}
-
-const tasks = makeResource('tasks');
-
-// ── Form 2 (destructured re-export) REMOVED — it broke the Next build:
-//    `export const { remove: viaDestructure } = tasks;` emits a phantom reference to
-//    the inner name `remove` → `ReferenceError: remove is not defined`. Do not use.
-
-// ── Form 3: property-access assignment ─────────────────────────────────────────
-export const viaProperty = tasks.update;
+export const list = tasks.list;
+export const create = tasks.create;
+export const remove = tasks.remove;

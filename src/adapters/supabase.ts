@@ -3,20 +3,68 @@ import type { Adapter } from '../adapter';
 /**
  * `supabaseAdapter` — the shipped default datasource adapter.
  *
- * v0.0.1 fixes the type surface only. The real implementation lands in **v0.0.2**,
- * when `defineResource` begins consuming the adapter. Until then every method throws
- * loudly, so a premature wiring mistake surfaces immediately instead of silently.
+ * Typed against a minimal structural view of the supabase-js client (the five ops it needs), so
+ * the library carries no `@supabase/supabase-js` dependency. A real `SupabaseClient` satisfies
+ * this shape. End-to-end correctness against a live DB is covered by the tenant-isolation tests.
  */
-function notImplemented(op: string): never {
-  throw new Error(
-    `[nextjs-action-registry] supabaseAdapter.${op} is not implemented until v0.0.2.`,
-  );
+
+type PgError = { message: string } | null;
+
+interface PgBuilder extends PromiseLike<{ data: unknown[] | null; error: PgError }> {
+  select(columns?: string): PgBuilder;
+  eq(column: string, value: unknown): PgBuilder;
+  single(): PromiseLike<{ data: unknown; error: PgError }>;
+  maybeSingle(): PromiseLike<{ data: unknown; error: PgError }>;
 }
 
-export const supabaseAdapter: Adapter<unknown> = {
-  list: () => notImplemented('list'),
-  get: () => notImplemented('get'),
-  create: () => notImplemented('create'),
-  update: () => notImplemented('update'),
-  remove: () => notImplemented('remove'),
+interface PgTable {
+  select(columns?: string): PgBuilder;
+  insert(values: unknown): PgBuilder;
+  update(patch: unknown): PgBuilder;
+  delete(): PgBuilder;
+}
+
+export interface SupabaseClientLike {
+  from(table: string): PgTable;
+}
+
+function unwrap<R>(res: { data: R; error: PgError }): R {
+  if (res.error) throw new Error(`[supabaseAdapter] ${res.error.message}`);
+  return res.data;
+}
+
+export const supabaseAdapter: Adapter<SupabaseClientLike> = {
+  async list(db, table, { scope }) {
+    let q = db.from(table).select('*');
+    if (scope) q = q.eq(scope.column, scope.value);
+    return unwrap(await q) ?? [];
+  },
+
+  async get(db, table, id, { scope }) {
+    let q = db.from(table).select('*').eq('id', id);
+    if (scope) q = q.eq(scope.column, scope.value);
+    return unwrap(await q.maybeSingle()) ?? null;
+  },
+
+  async create(db, table, values, { scope }) {
+    // Ownership injection: overwrite the owner column from `scope` — caller input can't spoof it.
+    const row = scope ? { ...values, [scope.column]: scope.value } : values;
+    return unwrap(await db.from(table).insert(row).select('*').single());
+  },
+
+  async update(db, table, id, patch, { scope }) {
+    let q = db.from(table).update(patch).eq('id', id);
+    if (scope) q = q.eq(scope.column, scope.value);
+    return unwrap(await q.select('*').single());
+  },
+
+  async remove(db, table, id, { scope }) {
+    let q = db.from(table).delete().eq('id', id);
+    if (scope) q = q.eq(scope.column, scope.value);
+    // `.select().single()` verifies EXACTLY ONE row was deleted. PostgREST does not error on a
+    // 0-row delete, so a cross-owner delete (row exists, owner filter matches nothing) would
+    // otherwise "succeed" and trigger revalidation. `.single()` turns 0 rows into an error.
+    const { error } = await q.select('id').single();
+    if (error) throw new Error(`[supabaseAdapter] ${error.message}`);
+  },
 };

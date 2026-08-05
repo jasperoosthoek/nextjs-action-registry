@@ -70,6 +70,36 @@ describe('action() — context + scope + revalidation threading (v0.0.1)', () =>
     expect(revalidateTag).not.toHaveBeenCalled();
   });
 
+  it('a throwing onError does not mask the original error (#2)', async () => {
+    const { action } = createActionRegistry({
+      createContext: async () => ({ db: {}, userId: 'u1' }),
+      onError: () => {
+        throw new Error('telemetry blew up');
+      },
+    });
+    const act = action(async () => {
+      throw new Error('real failure');
+    });
+    // The caller must see the real failure, never the telemetry error.
+    await expect(act()).rejects.toThrow('real failure');
+  });
+
+  it('passes options.name to onError telemetry (#3)', async () => {
+    const onError = vi.fn();
+    const { action } = createActionRegistry({
+      createContext: async () => ({ db: {}, userId: 'u1' }),
+      onError,
+    });
+    const act = action(
+      async () => {
+        throw new Error('boom');
+      },
+      { name: 'tasks.reorder' },
+    );
+    await expect(act()).rejects.toThrow('boom');
+    expect(onError.mock.calls[0]?.[1]).toEqual({ action: 'tasks.reorder' });
+  });
+
   it('a thrown handler rethrows and skips revalidation', async () => {
     const { action } = createActionRegistry({
       createContext: async () => ({ db: {}, userId: 'u1' }),

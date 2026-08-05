@@ -1,19 +1,26 @@
-import { direct, viaProperty } from './actions';
+import * as tasks from './actions';
+import { NewTask } from './new-task';
 
-// Each action is wired to a <form action={...}> so it can't be tree-shaken and MUST be
-// registered as a server reference for the build to succeed.
-export default function Page() {
+// Server component: reads via `tasks.list()` and renders. `remove` is bound per-row into a form
+// (it takes an id, not FormData, and returns void — so it fits the form slot with no cast).
+export default async function Page() {
+  const items = await tasks.list();
+
   return (
-    <main>
-      <h1>Server-action registration spike</h1>
-      <form action={direct}>
-        <input name="x" />
-        <button type="submit">Form 1: HOF direct</button>
-      </form>
-      <form action={viaProperty}>
-        <input name="x" />
-        <button type="submit">Form 3: property assignment</button>
-      </form>
+    <main style={{ fontFamily: 'system-ui', maxWidth: 480, margin: '2rem auto' }}>
+      <h1>Tasks ({items.length})</h1>
+      <NewTask create={tasks.create} />
+      <ul>
+        {items.map((t) => (
+          <li key={t.id}>
+            {t.title}
+            <form action={tasks.remove.bind(null, t.id)} style={{ display: 'inline' }}>
+              <button type="submit"> ✕</button>
+            </form>
+          </li>
+        ))}
+      </ul>
+      {items.length === 0 && <p>No tasks yet — add one above.</p>}
     </main>
   );
 }
