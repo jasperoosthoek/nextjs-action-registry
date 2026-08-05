@@ -39,6 +39,13 @@ function isPathTarget(t: RevalidationTarget): t is PathTarget {
   return typeof t === 'object' && 'path' in t;
 }
 
+// Only pass the `type` arg when it's set, so a typeless path is `revalidatePath(path)` — not
+// `revalidatePath(path, undefined)` — matching a plain string path.
+function doRevalidatePath(path: string, type?: 'page' | 'layout'): void {
+  if (type === undefined) revalidatePath(path);
+  else revalidatePath(path, type);
+}
+
 function revalidateTarget(target: RevalidationTarget, groups: RevalidationGroups): void {
   if (typeof target === 'string') {
     const group = groups[target];
@@ -50,13 +57,13 @@ function revalidateTarget(target: RevalidationTarget, groups: RevalidationGroups
     }
     group.tags?.forEach((tag) => revalidateTag(tag));
     group.paths?.forEach((p) =>
-      typeof p === 'string' ? revalidatePath(p) : revalidatePath(p.path, p.type),
+      typeof p === 'string' ? doRevalidatePath(p) : doRevalidatePath(p.path, p.type),
     );
     return;
   }
 
   if (isPathTarget(target)) {
-    revalidatePath(target.path, target.type);
+    doRevalidatePath(target.path, target.type);
     return;
   }
 

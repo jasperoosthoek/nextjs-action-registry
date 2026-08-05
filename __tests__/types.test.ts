@@ -6,12 +6,13 @@ import { fileURLToPath } from 'node:url';
 /**
  * Type-level test.
  *
- * `types.probe.ts` holds the type assertions (explicit annotations + `@ts-expect-error`).
- * This test runs `tsc --noEmit` over the whole project — which includes the probe — so a
- * wrong assertion or a missing/extra expected-error fails the build here.
+ * The type assertions live in two compile-only files: `types.probe.ts` (explicit annotations +
+ * `@ts-expect-error` — behavioral/negative checks) and `types.expect.ts` (`expect-type` exact
+ * type-equality). This test runs `tsc --noEmit` over the whole project — which includes both — so
+ * a wrong assertion or a missing/extra expected-error fails the build here.
  */
 describe('type safety', () => {
-  it('passes type checking (tsc --noEmit), incl. types.probe.ts', () => {
+  it('passes type checking (tsc --noEmit), incl. types.probe.ts + types.expect.ts', () => {
     const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
     try {
       execSync('npx tsc --noEmit', { cwd: root, stdio: 'pipe' });

@@ -1,4 +1,4 @@
-// @jasperoosthoek/nextjs-action-registry — public surface (v0.0.6)
+// @jasperoosthoek/nextjs-action-registry — public surface (v0.0.7)
 
 export { createActionRegistry } from './createActionRegistry';
 export type { RegistryConfig } from './createActionRegistry';
@@ -26,3 +26,6 @@ export type {
 
 export { supabaseAdapter } from './adapters/supabase';
 export type { SupabaseClientLike } from './adapters/supabase';
+
+export { cachedRead } from './cachedRead';
+export type { CachedReadOptions } from './cachedRead';

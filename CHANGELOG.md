@@ -2,6 +2,17 @@
 
 All notable changes to `@jasperoosthoek/nextjs-action-registry`.
 
+## 0.0.7
+
+- **`cachedRead`** — opt-in Data-Cache helper (wraps `unstable_cache`). `scopeKey` is required and
+  always prepended to the cache key (`userId` for per-user, `'global'` for shared), so per-user
+  scoping can't be forgotten; `keyParts` + `tags` + optional `revalidate` complete the config.
+  Reads stay dynamic by default — reach for this only for expensive or shared reads.
+- **Full revalidation model** exercised end-to-end: group names, direct `{ tag }` / `{ path }`
+  (with optional `page`/`layout` type), arrays of targets, and result-dependent functions;
+  unknown group names fail loud.
+- Fix: a typeless path target now calls `revalidatePath(path)` (not `revalidatePath(path, undefined)`).
+
 ## 0.0.6
 
 - **Exact type-equality tests** (`expect-type`) covering the generated-CRUD cast boundary: the

@@ -1,5 +1,5 @@
 import { expectTypeOf } from 'expect-type';
-import { createActionRegistry } from '../src';
+import { createActionRegistry, cachedRead } from '../src';
 import type { Adapter } from '../src';
 
 /**
@@ -49,3 +49,14 @@ const reorder = action(
   async (_ctx, ids: string[], orgId: string): Promise<{ n: number }> => ({ n: ids.length + orgId.length }),
 );
 expectTypeOf(reorder).toEqualTypeOf<(ids: string[], orgId: string) => Promise<{ n: number }>>();
+
+// ── cachedRead preserves the read's return type; scopeKey/keyParts/tags are required ──────────
+const cached = cachedRead(async (): Promise<number> => 1, {
+  scopeKey: 'global',
+  keyParts: ['rates'],
+  tags: ['rates'],
+});
+expectTypeOf(cached).toEqualTypeOf<() => Promise<number>>();
+
+// @ts-expect-error - scopeKey is required (can't forget to scope the cache key)
+cachedRead(async () => 1, { keyParts: ['x'], tags: ['x'] });
