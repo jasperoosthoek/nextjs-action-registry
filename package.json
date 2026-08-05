@@ -1,0 +1,46 @@
+{
+  "name": "@jasperoosthoek/nextjs-action-registry",
+  "version": "0.0.1",
+  "description": "Declarative CRUD + custom server actions for Next.js — config-driven, auth/ownership/revalidation threaded once.",
+  "author": "jasperoosthoek",
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "src/",
+    "dist/"
+  ],
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "peerDependencies": {
+    "next": ">=14"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "19.2.18",
+    "@vitest/coverage-v8": "^2.1.9",
+    "next": "^15.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  },
+  "keywords": [
+    "nextjs",
+    "server-actions",
+    "crud",
+    "revalidate",
+    "declarative",
+    "authorization"
+  ]
+}

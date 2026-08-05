@@ -1,0 +1,82 @@
+import { revalidateTag, revalidatePath } from 'next/cache';
+
+/**
+ * Revalidation model.
+ *
+ * A resource declares cache "groups" once (tags + route paths). An action then
+ * declares `revalidate` referencing a group name, a single `{ tag }` / `{ path }`,
+ * an array of those, or a function of the result. `runRevalidation` resolves that
+ * spec against the app-provided groups and calls `next/cache`.
+ *
+ * The library owns only this generic executor — the group map is injected by the app.
+ */
+
+/** A single route path to revalidate. `type` matches `revalidatePath`'s 2nd arg. */
+export type PathTarget = { path: string; type?: 'page' | 'layout' };
+
+/** An app-defined cache group: a fan-out of cache tags + route paths. */
+export type RevalidationGroup = { tags?: string[]; paths?: (string | PathTarget)[] };
+
+/** The app's named cache-group map, injected via `createActionRegistry`. */
+export type RevalidationGroups = Record<string, RevalidationGroup>;
+
+/**
+ * What an action declares. A bare string is a group name; the objects target one
+ * tag / path directly (escape hatch for one-off invalidations).
+ */
+export type RevalidationTarget = string | { tag: string } | PathTarget;
+
+/**
+ * The `revalidate` option on an action. May be result-dependent via a function.
+ * Omitting it entirely means "revalidate nothing" (opt-out is explicit).
+ */
+export type RevalidationSpec =
+  | RevalidationTarget
+  | RevalidationTarget[]
+  | ((result: unknown) => RevalidationTarget | RevalidationTarget[]);
+
+function isPathTarget(t: RevalidationTarget): t is PathTarget {
+  return typeof t === 'object' && 'path' in t;
+}
+
+function revalidateTarget(target: RevalidationTarget, groups: RevalidationGroups): void {
+  if (typeof target === 'string') {
+    const group = groups[target];
+    if (group === undefined) {
+      throw new Error(
+        `[nextjs-action-registry] Unknown revalidation group "${target}". ` +
+          `Declare it in the \`revalidation\` map passed to createActionRegistry.`,
+      );
+    }
+    group.tags?.forEach((tag) => revalidateTag(tag));
+    group.paths?.forEach((p) =>
+      typeof p === 'string' ? revalidatePath(p) : revalidatePath(p.path, p.type),
+    );
+    return;
+  }
+
+  if (isPathTarget(target)) {
+    revalidatePath(target.path, target.type);
+    return;
+  }
+
+  // { tag }
+  revalidateTag(target.tag);
+}
+
+/**
+ * Resolve a `RevalidationSpec` against the app's groups and fire the matching
+ * `revalidateTag` / `revalidatePath` calls. Called only after a handler succeeds
+ * (a thrown error skips revalidation, matching hand-written server actions).
+ */
+export function runRevalidation(
+  spec: RevalidationSpec | undefined,
+  groups: RevalidationGroups,
+  result: unknown,
+): void {
+  if (spec === undefined) return; // opt-out: revalidate nothing
+
+  const resolved = typeof spec === 'function' ? spec(result) : spec;
+  const targets = Array.isArray(resolved) ? resolved : [resolved];
+  for (const target of targets) revalidateTarget(target, groups);
+}
