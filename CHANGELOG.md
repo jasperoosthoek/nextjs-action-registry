@@ -2,6 +2,18 @@
 
 All notable changes to `@jasperoosthoek/nextjs-action-registry`.
 
+## 0.0.5
+
+- **Per-action hooks on `action()`** (all optional, typed to the handler's args + result):
+  - `prepare` — validate/guard the input before the handler runs (throw to reject); runs after auth.
+  - `onSuccess` — app logic after success, before revalidation; a throw fails the action.
+  - `onError` — app logic on failure; guarded so it never masks the original error, never swallows.
+    Runs only for **post-auth** failures — an auth/context failure never reaches it (so an
+    unauthenticated caller can't trigger action side effects with attacker input); only the
+    redacted registry `onError` fires for auth failures.
+- **Security note:** `onSuccess`/`onError` receive the raw args/result for app logic and must not
+  log them; redacted telemetry stays on the registry-level `onError` (which only gets `{ action }`).
+
 ## 0.0.4
 
 - **Declarative scope surface** formalized and type-tested: `scope: 'user'` (→ `user_id`),

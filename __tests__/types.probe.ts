@@ -61,6 +61,29 @@ reorder([{ id: 'a' }]);
 // @ts-expect-error - wrong arg type
 reorder('nope', 'org1');
 
+// ── ActionOptions: prepare / onSuccess / onError are typed to the handler's Args + Result ──────
+
+action(
+  async (_ctx, n: number, label: string): Promise<{ ok: boolean }> => ({ ok: n > 0 && label.length > 0 }),
+  {
+    prepare: (n, label) => {
+      // validate/guard — args are typed [number, string]; throw to reject
+      if (n < 0 || !label) throw new Error('invalid');
+    },
+    onSuccess: (result, n, label) => {
+      const _r: boolean = result.ok;
+      const _n: number = n;
+      const _l: string = label;
+    },
+    onError: (error, n, label) => {
+      const _e: unknown = error;
+      const _n: number = n;
+      const _l: string = label;
+    },
+  },
+);
+
+
 // ── ctx.scope arg checking ────────────────────────────────────────────────────
 
 action(async (ctx) => {

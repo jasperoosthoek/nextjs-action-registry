@@ -117,6 +117,125 @@ describe('action() — context + scope + revalidation threading (v0.0.1)', () =>
     expect(revalidateTag).not.toHaveBeenCalled();
   });
 
+  it('prepare validates the input (runs after auth) and can reject', async () => {
+    const order: string[] = [];
+    const { action } = createActionRegistry({
+      createContext: async () => {
+        order.push('auth');
+        return { db: {}, userId: 'u1' };
+      },
+    });
+    const act = action(
+      async (_ctx, input: { title: string }) => input.title,
+      {
+        prepare: (input) => {
+          order.push('prepare');
+          if (!input.title.trim()) throw new Error('title required');
+        },
+      },
+    );
+    // valid input passes:
+    expect(await act({ title: 'hi' })).toBe('hi');
+    expect(order).toEqual(['auth', 'prepare']); // auth first
+    // invalid input is rejected by prepare:
+    await expect(act({ title: '   ' })).rejects.toThrow('title required');
+  });
+
+  it('onSuccess runs on success (before revalidation) with the args', async () => {
+    const onSuccess = vi.fn();
+    const { action } = createActionRegistry({
+      createContext: async () => ({ db: {}, userId: 'u1' }),
+      revalidation: { g: { tags: ['g'] } },
+    });
+    const act = action(async (_ctx, n: number) => n * 2, { revalidate: 'g', onSuccess });
+    const r = await act(10);
+    expect(r).toBe(20);
+    expect(onSuccess).toHaveBeenCalledWith(20, 10); // result + arg
+    expect(revalidateTag).toHaveBeenCalledWith('g');
+  });
+
+  it('a throwing onSuccess fails the action and skips revalidation', async () => {
+    const { action } = createActionRegistry({
+      createContext: async () => ({ db: {}, userId: 'u1' }),
+      revalidation: { g: { tags: ['g'] } },
+    });
+    const act = action(async () => 'ok', {
+      revalidate: 'g',
+      onSuccess: () => {
+        throw new Error('onSuccess boom');
+      },
+    });
+    await expect(act()).rejects.toThrow('onSuccess boom');
+    expect(revalidateTag).not.toHaveBeenCalled();
+  });
+
+  it('per-action onError fires with the original args and does not mask the error', async () => {
+    const perAction = vi.fn();
+    const { action } = createActionRegistry({
+      createContext: async () => ({ db: {}, userId: 'u1' }),
+    });
+    const act = action(
+      async (_ctx, _id: string) => {
+        throw new Error('handler failed');
+      },
+      { onError: perAction },
+    );
+    await expect(act('x')).rejects.toThrow('handler failed');
+    // onError gets the action's args:
+    expect(perAction).toHaveBeenCalledWith(expect.any(Error), 'x');
+  });
+
+  it('per-action onError does NOT run on auth failure (only registry telemetry does)', async () => {
+    const perAction = vi.fn();
+    const registryOnError = vi.fn();
+    const { action } = createActionRegistry({
+      createContext: async () => {
+        throw new Error('Unauthenticated');
+      },
+      onError: registryOnError,
+    });
+    const act = action(async (_ctx, _secret: string) => 'ok', { onError: perAction });
+
+    await expect(act('attacker-input')).rejects.toThrow('Unauthenticated');
+    // per-action app-logic onError must NOT fire for an unauthenticated caller:
+    expect(perAction).not.toHaveBeenCalled();
+    // registry redacted telemetry still fires, with only { action }:
+    expect(registryOnError).toHaveBeenCalledTimes(1);
+    expect(registryOnError.mock.calls[0]?.[1]).toEqual({ action: expect.any(String) });
+  });
+
+  it('per-action onError DOES run on a post-auth (handler) failure', async () => {
+    const perAction = vi.fn();
+    const { action } = createActionRegistry({
+      createContext: async () => ({ db: {}, userId: 'u1' }),
+    });
+    const act = action(
+      async () => {
+        throw new Error('handler failed');
+      },
+      { onError: perAction },
+    );
+    await expect(act()).rejects.toThrow('handler failed');
+    expect(perAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('a throwing per-action onError still surfaces the original error', async () => {
+    const { action } = createActionRegistry({
+      createContext: async () => ({ db: {}, userId: 'u1' }),
+    });
+    const act = action(
+      async () => {
+        throw new Error('real');
+      },
+      {
+        onError: () => {
+          throw new Error('onError blew up');
+        },
+      },
+    );
+    await expect(act()).rejects.toThrow('real');
+  });
+
   it('an unknown revalidation group throws (fail-loud)', async () => {
     const { action } = createActionRegistry({
       createContext: async () => ({ db: {}, userId: 'u1' }),

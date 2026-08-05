@@ -1,5 +1,5 @@
 import type { Adapter, ScopeFilter } from './adapter';
-import type { ActionFactory, ActionOptions } from './action';
+import type { ActionFactory } from './action';
 import type { BaseContext, ScopeDefs } from './context';
 import type { RevalidationSpec } from './revalidation';
 
@@ -133,9 +133,11 @@ export function makeDefineResource<DB, Ctx extends BaseContext<DB>, S extends Sc
       };
 
       // Name each generated action "<table>.<op>" so registry-level onError telemetry is useful.
-      const mutOpts = (op: string): ActionOptions =>
+      // (No return annotation: the inferred literal has no callback fields, so it's assignable to
+      // the per-action ActionOptions<Args, Result> below.)
+      const mutOpts = (op: string) =>
         revalidate === undefined ? { name: `${table}.${op}` } : { revalidate, name: `${table}.${op}` };
-      const readOpts = (op: string): ActionOptions => ({ name: `${table}.${op}` });
+      const readOpts = (op: string) => ({ name: `${table}.${op}` });
 
       // Each op is built with EXPLICIT type args to action() — arg + return types are exact, with no
       // inference through the enclosing generics (so no loose alias). The only cast is a single `as`

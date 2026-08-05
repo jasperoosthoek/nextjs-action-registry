@@ -1,7 +1,7 @@
 import { runRevalidation, type RevalidationGroups } from './revalidation';
 import type { BaseContext, ScopeDefs, BoundScopes, ActionContext } from './context';
 import type { Adapter } from './adapter';
-import type { ActionFactory, ActionOptions } from './action';
+import type { ActionFactory } from './action';
 import { makeDefineResource, type DefineResource } from './defineResource';
 
 /**
@@ -52,30 +52,54 @@ export function createActionRegistry<
 ): { action: ActionFactory<Ctx, S>; defineResource: DefineResource<DB, Ctx, S> } {
   const groups = config.revalidation ?? {};
 
-  const action: ActionFactory<Ctx, S> = (handler, options?: ActionOptions) => {
+  const action: ActionFactory<Ctx, S> = (handler, options) => {
+    // Registry-level onError: redacted telemetry (only { action }); guarded so it never masks.
+    const reportError = (err: unknown): void => {
+      if (config.onError) {
+        try {
+          config.onError(err, { action: options?.name || handler.name || 'anonymous' });
+        } catch {
+          // telemetry failures must never surface instead of the original error
+        }
+      }
+    };
+
     return async (...args) => {
+      // Auth in its OWN try. An auth failure must NOT reach the per-action, raw-args, app-logic
+      // onError — otherwise an unauthenticated caller could trigger side effects with attacker
+      // input. Only the redacted registry telemetry runs for unauthenticated calls.
+      let base: Ctx;
       try {
-        // createContext may throw on unauthenticated — that propagates.
-        const base = await config.createContext();
+        base = await config.createContext();
+      } catch (err) {
+        reportError(err);
+        throw err;
+      }
+
+      // Authenticated from here — per-action onError (app logic) is permitted.
+      try {
+        // Validate/guard the input — a throw here rejects the action.
+        if (options?.prepare) await options.prepare(...args);
         const ctx: ActionContext<Ctx, S> = {
           ...base,
           scope: bindScopes(config.scopes, base),
         };
 
         const result = await handler(ctx, ...args);
-        // Only reached on success — a thrown handler skips revalidation.
+        // App logic on success, before revalidation (a throw here fails the action).
+        if (options?.onSuccess) await options.onSuccess(result, ...args);
         runRevalidation(options?.revalidate, groups, result);
         return result;
       } catch (err) {
-        // Telemetry only — never swallows, never REPLACES, never sees the args (redaction).
-        // Guarded so a throwing onError can't mask the real error.
-        if (config.onError) {
+        // Per-action onError (app logic, gets the args) — guarded so it can't mask the error.
+        if (options?.onError) {
           try {
-            config.onError(err, { action: options?.name || handler.name || 'anonymous' });
+            await options.onError(err, ...args);
           } catch {
-            // telemetry failures must never surface instead of the original error
+            // app onError must never surface instead of the original error
           }
         }
+        reportError(err);
         throw err;
       }
     };
