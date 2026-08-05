@@ -1,6 +1,6 @@
 {
   "name": "@jasperoosthoek/nextjs-action-registry",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "Declarative CRUD + custom server actions for Next.js — config-driven, auth/ownership/revalidation threaded once.",
   "author": "jasperoosthoek",
   "license": "MIT",
@@ -31,6 +31,7 @@
     "@types/node": "^20.0.0",
     "@types/react": "19.2.18",
     "@vitest/coverage-v8": "^2.1.9",
+    "expect-type": "^1.4.0",
     "next": "^15.0.0",
     "typescript": "^5.5.0",
     "vitest": "^2.0.0"

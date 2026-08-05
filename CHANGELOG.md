@@ -2,6 +2,14 @@
 
 All notable changes to `@jasperoosthoek/nextjs-action-registry`.
 
+## 0.0.6
+
+- **Exact type-equality tests** (`expect-type`) covering the generated-CRUD cast boundary: the
+  adapter is generic (`unknown`), and `defineResource<T>()` asserts the row type — these prove the
+  surfaced signatures for `list`/`get`/`create`/`update`/`remove` are *exactly* right, and that
+  `action()` infers the returned signature (ctx stripped, args + result preserved) and that
+  unconfigured actions are absent.
+
 ## 0.0.5
 
 - **Per-action hooks on `action()`** (all optional, typed to the handler's args + result):

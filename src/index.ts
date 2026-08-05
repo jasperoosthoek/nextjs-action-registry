@@ -1,4 +1,4 @@
-// @jasperoosthoek/nextjs-action-registry — public surface (v0.0.5)
+// @jasperoosthoek/nextjs-action-registry — public surface (v0.0.6)
 
 export { createActionRegistry } from './createActionRegistry';
 export type { RegistryConfig } from './createActionRegistry';
