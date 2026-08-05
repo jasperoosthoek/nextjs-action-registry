@@ -114,13 +114,22 @@ const tasks = reg2.defineResource<Task>()({
 // Configured actions exist with the right signatures:
 const _get: (id: string) => Promise<Task | null> = tasks.get;
 const _rm: (id: string) => Promise<void> = tasks.remove;
-// create input is narrowed to writableFields (Pick<T, 'title' | 'done'>):
+// create input is the full writable allowlist (Pick<T, 'title' | 'done'>):
 const _cr: (input: { title: string; done: boolean }) => Promise<Task> = tasks.create;
-const _up: (id: string, input: { title: string; done: boolean }) => Promise<Task> = tasks.update;
+// update input is a PARTIAL of the allowlist — update some fields, not all:
+const _up: (id: string, input: Partial<{ title: string; done: boolean }>) => Promise<Task> = tasks.update;
+tasks.update('id', { title: 'x' }); // partial (only title) is valid
+tasks.update('id', {}); // empty is valid
 
-// create input must NOT accept the ownership column (not in writableFields):
+// create requires the full allowlist — a partial create is a type error:
+// @ts-expect-error - `done` is required on create
+tasks.create({ title: 'x' });
+
+// neither create nor update accepts the ownership column (not in writableFields):
 // @ts-expect-error - owner_id is not writable
 tasks.create({ title: 'x', done: true, owner_id: 'me' });
+// @ts-expect-error - owner_id is not writable
+tasks.update('id', { owner_id: 'me' });
 
 // list was not configured → property does not exist:
 // @ts-expect-error - list not configured
@@ -133,4 +142,10 @@ reg2.defineResource<Task>()({ table: 'x', actions: { get: true } });
 // 'public' is the explicit unscoped opt-out:
 const _pub = reg2.defineResource<Task>()({ table: 'catalog', scope: 'public', actions: { list: true } });
 const _pubList: () => Promise<Task[]> = _pub.list;
+
+// Declarative scope surface: 'user' shorthand and { column } override are both accepted:
+reg2.defineResource<Task>()({ table: 'a', scope: 'user', actions: { get: true } });
+reg2.defineResource<Task>()({ table: 'b', scope: { column: 'account_id' }, actions: { get: true } });
+// @ts-expect-error - scope must be 'user' | { column } | 'public'
+reg2.defineResource<Task>()({ table: 'c', scope: 'nonsense', actions: { get: true } });
 

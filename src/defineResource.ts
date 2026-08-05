@@ -41,7 +41,7 @@ export type GeneratedResource<T, W extends keyof T, A extends ActionsConfig> = (
   (Has<A, 'get'> extends true ? { get: (id: string) => Promise<T | null> } : unknown) &
   (Has<A, 'create'> extends true ? { create: (input: Pick<T, W>) => Promise<T> } : unknown) &
   (Has<A, 'update'> extends true
-    ? { update: (id: string, input: Pick<T, W>) => Promise<T> }
+    ? { update: (id: string, input: Partial<Pick<T, W>>) => Promise<T> }
     : unknown) &
   (Has<A, 'remove'> extends true ? { remove: (id: string) => Promise<void> } : unknown);
 
@@ -124,7 +124,7 @@ export function makeDefineResource<DB, Ctx extends BaseContext<DB>, S extends Sc
 
       // Copy only the allowlisted (writable) fields — mass-assignment prevention. `k` is `keyof T`
       // and `input` is `Pick<T, W>`, so `input[k]` needs no cast.
-      const narrow = (input: Pick<T, W>): Record<string, unknown> => {
+      const narrow = (input: Partial<Pick<T, W>>): Record<string, unknown> => {
         const out: Record<string, unknown> = {};
         for (const k of writableFields ?? []) {
           if (Object.prototype.hasOwnProperty.call(input, k)) out[String(k)] = input[k];
@@ -154,7 +154,7 @@ export function makeDefineResource<DB, Ctx extends BaseContext<DB>, S extends Sc
           (await adapter.create(ctx.db, table, narrow(input), { scope: scopeFor(ctx.userId) })) as T,
         mutOpts('create'),
       );
-      const update = action<[id: string, input: Pick<T, W>], T>(
+      const update = action<[id: string, input: Partial<Pick<T, W>>], T>(
         async (ctx, id, input) =>
           (await adapter.update(ctx.db, table, id, narrow(input), { scope: scopeFor(ctx.userId) })) as T,
         mutOpts('update'),
