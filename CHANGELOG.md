@@ -2,6 +2,16 @@
 
 All notable changes to `@jasperoosthoek/nextjs-action-registry`.
 
+## 0.0.8
+
+- **Tenant-isolation harness** (`@jasperoosthoek/nextjs-action-registry/testing`) —
+  `checkTenantIsolation({ unauthenticated, crossTenant })` runs vector-driven probes against a
+  seeded two-tenant fixture and returns a report (assert `report.failed` is empty). Standardizes
+  the security assertions: unauthenticated → reject; cross-tenant read → empty; cross-tenant
+  mutation → reject. Framework-agnostic; run it against a real test DB as the pre-release gate.
+- **Contract test proving the harness detects leaks** (an unscoped adapter fails it) — so it's a
+  real gate, not a rubber stamp.
+
 ## 0.0.7
 
 - **`cachedRead`** — opt-in Data-Cache helper (wraps `unstable_cache`). `scopeKey` is required and
