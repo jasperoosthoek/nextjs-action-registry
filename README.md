@@ -36,13 +36,17 @@ const tasks = defineResource<Task>()({
   table: 'tasks',
   scope: { column: 'owner_id' },                // configurable owner column (default 'user_id')
   writableFields: ['title', 'completed'],       // required for create/update — closes mass assignment
+  readonlyFields: ['created_at', 'updated_at'], // optional app-managed columns, never writable
   actions: { create: true, update: true, remove: true },
   revalidate: 'tasks',
 });
 
-// Export via property assignment — NOT destructuring (destructure breaks the Next build).
-export const addTask = tasks.create;
-export const deleteTask = tasks.remove;
+// Export each generated action under its OWN name via property assignment — NOT destructuring
+// (destructure breaks the Next build), and NOT renamed aliases. Call sites do `import * as tasks`
+// to recover `tasks.create(...)` ergonomics; Next forbids exporting the `tasks` object itself.
+export const create = tasks.create;
+export const update = tasks.update;
+export const remove = tasks.remove;
 
 // Bespoke logic: a standalone action(), exported directly.
 export const reorderTasks = action(
@@ -81,6 +85,8 @@ Action names in telemetry: pass `name` in `ActionOptions` (generated actions are
   Combining it with a generated mutation (`create`/`update`/`remove`) throws — an unscoped write
   must be a bespoke `action()`, never generated.
 - **No ownership spoofing:** generated `create` overwrites the owner column from `ctx.userId`.
+- **Readonly fields:** add `readonlyFields` for app-managed columns such as timestamps or counters;
+  generated `create`/`update` reject any overlap with `writableFields`.
 - **Defense in depth:** app-level scope filters sit alongside the datasource's own row security
   (e.g. Postgres RLS). NAR assumes a user-scoped client; a service-role client makes the app-level
   scope the *only* boundary.
@@ -111,6 +117,11 @@ revalidate: 'tasks'                              // a group name
 revalidate: [{ tag: 'x' }, { path: '/y' }]       // direct targets / arrays
 revalidate: (result) => (result ? 'tasks' : [])  // result-dependent
 ```
+
+When the `revalidation` map is declared inline (or kept as a narrow `const` object — not widened to
+`RevalidationGroups`), group names are type-checked: `revalidate: 'tasks'` is accepted if `tasks`
+exists in the map; unknown group names are a compile error. Direct `{ tag }` and `{ path }` targets
+remain available for one-off invalidation.
 
 ## Caching reads
 

@@ -1,6 +1,6 @@
 {
   "name": "@jasperoosthoek/nextjs-action-registry",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "description": "Declarative CRUD + custom server actions for Next.js — config-driven, auth/ownership/revalidation threaded once.",
   "author": "jasperoosthoek",
   "license": "MIT",
@@ -26,7 +26,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test-spike": "cd spike && ../node_modules/.bin/next build"
   },
   "peerDependencies": {
     "next": ">=14"

@@ -74,6 +74,21 @@ describe('tenant-isolation harness (example-app contract test)', () => {
     expect(report.failed[0]?.reason).toMatch(/another tenant's data/);
   });
 
+  it('DETECTS a leak: a read returning a non-empty array fails the harness', async () => {
+    const report = await checkTenantIsolation({
+      crossTenant: [
+        {
+          name: 'list returns another tenant row',
+          run: async () => [{ id: '1', owner_id: 'userA' }],
+          expect: 'empty',
+        },
+      ],
+    });
+
+    expect(report.failed).toHaveLength(1);
+    expect(report.failed[0]?.reason).toMatch(/another tenant's data/);
+  });
+
   it('does not throw when a leaked row holds a non-JSON-safe value (bigint)', async () => {
     const bigintLeak: Adapter<null> = {
       list: async () => [],
@@ -90,5 +105,37 @@ describe('tenant-isolation harness (example-app contract test)', () => {
     });
     expect(report.failed).toHaveLength(1);
     expect(report.failed[0]?.reason).toContain('9007199254740993n');
+  });
+
+  it('reports every standardized failure branch', async () => {
+    const report = await checkTenantIsolation({
+      unauthenticated: [{ name: 'list unexpectedly succeeds', run: async () => [] }],
+      crossTenant: [
+        { name: 'update unexpectedly succeeds', run: async () => ({ id: '1' }), expect: 'reject' },
+        {
+          name: 'get unexpectedly throws',
+          run: async () => {
+            throw new Error('db unavailable');
+          },
+          expect: 'empty',
+        },
+      ],
+    });
+
+    expect(report.passed).toEqual([]);
+    expect(report.failed).toEqual([
+      {
+        name: 'unauthenticated: list unexpectedly succeeds',
+        reason: 'did not reject an unauthenticated call',
+      },
+      {
+        name: 'cross-tenant: update unexpectedly succeeds',
+        reason: 'a cross-tenant mutation did not reject',
+      },
+      {
+        name: 'cross-tenant: get unexpectedly throws',
+        reason: 'a read threw instead of returning empty',
+      },
+    ]);
   });
 });

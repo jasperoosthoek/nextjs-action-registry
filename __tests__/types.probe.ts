@@ -52,6 +52,13 @@ const reorder = action(
   { revalidate: 'tasks' },
 );
 
+action(async () => null, { revalidate: { tag: 'direct-tag' } });
+action(async () => null, { revalidate: { path: '/direct-path' } });
+action(async () => true, { revalidate: (result) => (result ? 'tasks' : { tag: 'fallback' }) });
+
+// @ts-expect-error - registry revalidation group names are typed
+action(async () => null, { revalidate: 'missingGroup' });
+
 // Returned action: (updates, orgId) => Promise<{ n: number }>  (ctx gone).
 const _result: Promise<{ n: number }> = reorder([{ id: 'a' }], 'org1');
 
@@ -119,6 +126,7 @@ const _ctxUser: string = _ctx.userId;
 // ── defineResource: conditional generation + writable-field input types ───────
 
 type Task = { id: string; title: string; done: boolean; owner_id: string };
+type AuditedTask = Task & { created_at: string };
 
 const reg2 = createActionRegistry({
   createContext: async (): Promise<{ db: DB; userId: string }> => ({ db: { marker: 'db' }, userId: 'u' }),
@@ -132,6 +140,43 @@ const tasks = reg2.defineResource<Task>()({
   writableFields: ['title', 'done'],
   actions: { get: true, create: true, update: true, remove: true },
   revalidate: 'tasks',
+});
+
+reg2.defineResource<Task>()({
+  table: 'badTasks',
+  scope: { column: 'owner_id' },
+  writableFields: ['title'],
+  actions: { create: true },
+  // @ts-expect-error - generated resource revalidate must use a known group or a direct target
+  revalidate: 'missingGroup',
+});
+
+reg2.defineResource<Task>()({
+  table: 'directTasks',
+  scope: { column: 'owner_id' },
+  writableFields: ['title'],
+  actions: { create: true },
+  revalidate: { tag: 'direct-tasks' },
+});
+
+const audited = reg2.defineResource<AuditedTask>()({
+  table: 'auditedTasks',
+  scope: { column: 'owner_id' },
+  readonlyFields: ['created_at'],
+  writableFields: ['title'],
+  actions: { create: true, update: true },
+});
+const _auditedCreate: (input: { title: string }) => Promise<AuditedTask> = audited.create;
+// @ts-expect-error - readonly/server-managed fields are not generated inputs
+audited.create({ title: 'x', created_at: 'now' });
+
+reg2.defineResource<AuditedTask>()({
+  table: 'badAuditedTasks',
+  scope: { column: 'owner_id' },
+  readonlyFields: ['created_at'],
+  // @ts-expect-error - writableFields must not overlap readonlyFields
+  writableFields: ['title', 'created_at'],
+  actions: { create: true },
 });
 
 // Configured actions exist with the right signatures:
@@ -171,4 +216,3 @@ reg2.defineResource<Task>()({ table: 'a', scope: 'user', actions: { get: true } 
 reg2.defineResource<Task>()({ table: 'b', scope: { column: 'account_id' }, actions: { get: true } });
 // @ts-expect-error - scope must be 'user' | { column } | 'public'
 reg2.defineResource<Task>()({ table: 'c', scope: 'nonsense', actions: { get: true } });
-

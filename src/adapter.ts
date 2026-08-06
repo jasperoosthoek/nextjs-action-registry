@@ -21,7 +21,7 @@ export type ScopeFilter = { column: string; value: string } | null;
  *   MUST return `null`; a `list` MUST omit other tenants' rows. Never return unscoped data.
  * - `create` — MUST set the ownership column from `scope` (`values[scope.column] = scope.value`),
  *   **overwriting** any caller-supplied value, so ownership cannot be spoofed. `values` is already
- *   narrowed to the writable allowlist (no `id`, no ownership column, no mass assignment).
+ *   narrowed to the writable allowlist (no `id`, no ownership/readonly fields, no mass assignment).
  * - `update` — MUST apply `scope` AND affect exactly the one matching row; a 0-row match (row
  *   owned by another tenant, or missing) MUST **reject** (throw), not silently succeed.
  * - `remove` — same as `update`: scope-filtered, and a 0-row delete MUST **reject**, so a

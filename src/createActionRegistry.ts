@@ -12,7 +12,12 @@ import { makeDefineResource, type DefineResource } from './defineResource';
  * Type params: DB (data client), Ctx (whatever `createContext` returns, ⊇ BaseContext),
  * S (the scopes map, resolving over Ctx).
  */
-export type RegistryConfig<DB, Ctx extends BaseContext<DB>, S extends ScopeDefs<Ctx>> = {
+export type RegistryConfig<
+  DB,
+  Ctx extends BaseContext<DB>,
+  S extends ScopeDefs<Ctx>,
+  Groups extends RevalidationGroups = RevalidationGroups,
+> = {
   /** Required — the app owns auth; may throw on unauthenticated. May return extras. */
   createContext: () => Promise<Ctx>;
   /**
@@ -22,7 +27,7 @@ export type RegistryConfig<DB, Ctx extends BaseContext<DB>, S extends ScopeDefs<
    */
   scopes?: S & ScopeDefs<NoInfer<Ctx>>;
   /** Named cache fan-outs. */
-  revalidation?: RevalidationGroups;
+  revalidation?: Groups;
   /** Required once `defineResource` is used. */
   adapter?: Adapter<DB>;
   /** Redacted telemetry hook. Fires on any error; NEVER receives the action args; does not swallow. */
@@ -47,12 +52,13 @@ export function createActionRegistry<
   DB,
   Ctx extends BaseContext<DB> = BaseContext<DB>,
   S extends ScopeDefs<Ctx> = {},
+  const Groups extends RevalidationGroups = RevalidationGroups,
 >(
-  config: RegistryConfig<DB, Ctx, S>,
-): { action: ActionFactory<Ctx, S>; defineResource: DefineResource<DB, Ctx, S> } {
+  config: RegistryConfig<DB, Ctx, S, Groups>,
+): { action: ActionFactory<Ctx, S, Groups>; defineResource: DefineResource<DB, Ctx, S, Groups> } {
   const groups = config.revalidation ?? {};
 
-  const action: ActionFactory<Ctx, S> = (handler, options) => {
+  const action: ActionFactory<Ctx, S, Groups> = (handler, options) => {
     // Registry-level onError: redacted telemetry (only { action }); guarded so it never masks.
     const reportError = (err: unknown): void => {
       if (config.onError) {
@@ -105,7 +111,7 @@ export function createActionRegistry<
     };
   };
 
-  const defineResource = makeDefineResource<DB, Ctx, S>(config.adapter, action);
+  const defineResource = makeDefineResource<DB, Ctx, S, Groups>(config.adapter, action);
 
   return { action, defineResource };
 }

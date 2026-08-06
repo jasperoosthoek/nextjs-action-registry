@@ -1,4 +1,4 @@
-import type { RevalidationSpec } from './revalidation';
+import type { RevalidationGroups, RevalidationSpec } from './revalidation';
 import type { ActionContext, ScopeDefs } from './context';
 
 /**
@@ -8,9 +8,13 @@ import type { ActionContext, ScopeDefs } from './context';
  * writes, cleanup) — they must NEVER log them (inputs may hold sensitive data). Redacted
  * telemetry belongs on the registry-level `onError`, which is handed only `{ action }`.
  */
-export type ActionOptions<Args extends unknown[] = unknown[], Result = unknown> = {
+export type ActionOptions<
+  Args extends unknown[] = unknown[],
+  Result = unknown,
+  Groups extends RevalidationGroups = RevalidationGroups,
+> = {
   /** Cache invalidation to run after success. */
-  revalidate?: RevalidationSpec;
+  revalidate?: RevalidationSpec<Groups>;
   /**
    * Stable name surfaced to the registry-level `onError` as `{ action }`. Recommended, because
    * `handler.name` is empty for the common `action(async (…) => …)` arrow. `defineResource`
@@ -41,7 +45,11 @@ export type ActionOptions<Args extends unknown[] = unknown[], Result = unknown> 
  * The returned server action preserves the handler's arg types verbatim, minus the
  * injected `ctx`.
  */
-export type ActionFactory<Ctx, S extends ScopeDefs<Ctx>> = <Args extends unknown[], Result>(
+export type ActionFactory<
+  Ctx,
+  S extends ScopeDefs<Ctx>,
+  Groups extends RevalidationGroups = RevalidationGroups,
+> = <Args extends unknown[], Result>(
   handler: (ctx: ActionContext<Ctx, S>, ...args: Args) => Promise<Result>,
-  options?: ActionOptions<Args, Result>,
+  options?: ActionOptions<Args, Result, Groups>,
 ) => (...args: Args) => Promise<Result>;

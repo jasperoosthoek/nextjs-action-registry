@@ -245,6 +245,21 @@ describe('defineResource — generated CRUD (v0.0.2)', () => {
       ).toThrow(/never writable/);
     });
 
+    it('writableFields containing a declared readonly field throws', () => {
+      type AuditedTask = Task & { created_at: string };
+      const { adapter } = makeFakeAdapter();
+      const { defineResource } = setup(adapter);
+      expect(() =>
+        defineResource<AuditedTask>()({
+          table: 'tasks',
+          scope: { column: 'owner_id' },
+          readonlyFields: ['created_at'],
+          writableFields: ['title', 'created_at'],
+          actions: { create: true },
+        } as never),
+      ).toThrow(/readonly\/server-managed fields are never writable/);
+    });
+
     it('create/update without writableFields throws at definition time', () => {
       const { adapter } = makeFakeAdapter();
       const { defineResource } = setup(adapter);

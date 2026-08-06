@@ -2,6 +2,16 @@
 
 All notable changes to `@jasperoosthoek/nextjs-action-registry`.
 
+## Unreleased
+
+- **Typed revalidation groups:** when a registry's `revalidation` map is declared inline (or kept
+  as a narrow `const` object, not widened to `RevalidationGroups`), `action()` and
+  `defineResource()` now type-check group-name strings against that map. Direct `{ tag }` and
+  `{ path }` targets remain available.
+- **Readonly field boundary:** resources can declare `readonlyFields` for app-managed columns
+  (timestamps, counters, etc.); generated `create`/`update` reject any overlap with
+  `writableFields` at type-check time for literals and at definition time for JS/unsafe callers.
+
 ## 0.0.9
 
 - **Adapter contract hardened (docs):** the `Adapter` type now documents the per-method security

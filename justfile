@@ -22,6 +22,10 @@ test:
 test-coverage:
     @npm test -- --coverage
 
+# Run the spike app production build through npm
+test-spike:
+    @npm run test-spike
+
 # Typecheck the library
 typecheck:
     @npm run typecheck

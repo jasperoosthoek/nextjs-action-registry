@@ -1,7 +1,7 @@
 import type { Adapter, ScopeFilter } from './adapter';
 import type { ActionFactory } from './action';
 import type { BaseContext, ScopeDefs } from './context';
-import type { RevalidationSpec } from './revalidation';
+import type { RevalidationGroups, RevalidationSpec } from './revalidation';
 
 /**
  * How a generated resource is owner-scoped. `'user'` is shorthand for `{ column: 'user_id' }`.
@@ -18,15 +18,24 @@ export type ActionsConfig = Partial<Record<'list' | 'get' | 'create' | 'update' 
  * - `scope` is **required** (a required field, so omitting it is a type error) — every generated
  *   action, reads included, is ownership-scoped unless you opt out with `scope: 'public'`.
  * - `writableFields` is required whenever `create`/`update` is generated (the mass-assignment
- *   allowlist); it must not include the ownership column or `id`. Both are checked at
- *   definition/build time (the module is evaluated during `next build`), and throw if violated.
+ *   allowlist); it must not include the ownership column, `id`, or any `readonlyFields`. These are
+ *   checked at definition/build time (the module is evaluated during `next build`) and throw if
+ *   violated.
  */
-export type ResourceConfig<T, W extends keyof T, A extends ActionsConfig> = {
+export type ResourceConfig<
+  T,
+  W extends keyof T,
+  A extends ActionsConfig,
+  Groups extends RevalidationGroups = RevalidationGroups,
+  R extends keyof T = never,
+> = {
   table: string;
   scope: ResourceScope;
-  writableFields?: readonly W[];
+  writableFields?: readonly Exclude<W, R>[];
+  /** App-specific server-managed columns, e.g. timestamps, sequence fields, denormalized counters. */
+  readonlyFields?: readonly R[];
   actions: A;
-  revalidate?: RevalidationSpec;
+  revalidate?: RevalidationSpec<Groups>;
 };
 
 type Has<A, K extends string> = K extends keyof A ? (A[K] extends true ? true : false) : false;
@@ -46,10 +55,17 @@ export type GeneratedResource<T, W extends keyof T, A extends ActionsConfig> = (
   (Has<A, 'remove'> extends true ? { remove: (id: string) => Promise<void> } : unknown);
 
 /** The curried factory returned by `createActionRegistry`. `T` is explicit; `W`/`A` are inferred. */
-export type DefineResource<DB, Ctx extends BaseContext<DB>, S extends ScopeDefs<Ctx>> = <
-  T,
->() => <A extends ActionsConfig, W extends keyof T = keyof T>(
-  config: ResourceConfig<T, W, A>,
+export type DefineResource<
+  DB,
+  Ctx extends BaseContext<DB>,
+  S extends ScopeDefs<Ctx>,
+  Groups extends RevalidationGroups = RevalidationGroups,
+> = <T>() => <
+  const A extends ActionsConfig,
+  const R extends keyof T = never,
+  W extends keyof T = keyof T,
+>(
+  config: ResourceConfig<T, W, A, Groups, R>,
 ) => GeneratedResource<T, W, A>;
 
 /** The owner column, or `null` for an explicitly `'public'` (unscoped) resource. */
@@ -63,15 +79,20 @@ function resolveScopeColumn(scope: ResourceScope): string | null {
  * action runs through `action()` (so it gets the same auth/ctx/scope/revalidation frame), then
  * dispatches to the adapter with the resolved ownership `ScopeFilter`.
  */
-export function makeDefineResource<DB, Ctx extends BaseContext<DB>, S extends ScopeDefs<Ctx>>(
+export function makeDefineResource<
+  DB,
+  Ctx extends BaseContext<DB>,
+  S extends ScopeDefs<Ctx>,
+  Groups extends RevalidationGroups = RevalidationGroups,
+>(
   adapter: Adapter<DB> | undefined,
-  action: ActionFactory<Ctx, S>,
-): DefineResource<DB, Ctx, S> {
+  action: ActionFactory<Ctx, S, Groups>,
+): DefineResource<DB, Ctx, S, Groups> {
   const define = <T>() =>
-    <A extends ActionsConfig, W extends keyof T = keyof T>(
-      config: ResourceConfig<T, W, A>,
+    <const A extends ActionsConfig, const R extends keyof T = never, W extends keyof T = keyof T>(
+      config: ResourceConfig<T, W, A, Groups, R>,
     ): GeneratedResource<T, W, A> => {
-      const { table, scope, writableFields, actions, revalidate } = config;
+      const { table, scope, writableFields, readonlyFields, actions, revalidate } = config;
 
       if (!adapter) {
         throw new Error(
@@ -104,16 +125,19 @@ export function makeDefineResource<DB, Ctx extends BaseContext<DB>, S extends Sc
 
       const column = resolveScopeColumn(scope);
 
-      // Fail closed: the ownership column and `id` are never writable (no re-owning or re-keying).
-      // The library can only reject what it knows; server-managed columns (timestamps, etc.) with
-      // app-specific names must be left out of `writableFields` by the author.
+      // Fail closed: the ownership column, `id`, and declared readonly fields are never writable
+      // (no re-owning, re-keying, or app-managed column writes).
       if (writableFields) {
-        const forbidden = new Set<string>(['id', ...(column ? [column] : [])]);
+        const forbidden = new Set<string>([
+          'id',
+          ...(column ? [column] : []),
+          ...(readonlyFields ?? []).map(String),
+        ]);
         for (const w of writableFields) {
           if (forbidden.has(String(w))) {
             throw new Error(
               `[nextjs-action-registry] resource "${table}": writableFields must not include ` +
-                `"${String(w)}" — the ownership column and \`id\` are server-managed, never writable.`,
+                `"${String(w)}" — readonly/server-managed fields are never writable.`,
             );
           }
         }
@@ -178,5 +202,5 @@ export function makeDefineResource<DB, Ctx extends BaseContext<DB>, S extends Sc
       return resource as GeneratedResource<T, W, A>;
     };
 
-  return define as DefineResource<DB, Ctx, S>;
+  return define as DefineResource<DB, Ctx, S, Groups>;
 }

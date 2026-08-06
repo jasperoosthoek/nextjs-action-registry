@@ -237,9 +237,12 @@ describe('action() — context + scope + revalidation threading (v0.0.1)', () =>
   });
 
   it('an unknown revalidation group throws (fail-loud)', async () => {
+    // No `revalidation` map declared → the group type stays widened (`RevalidationGroups`), so any
+    // string is type-legal and no cast is needed. The runtime guard is the backstop here (and the
+    // ONLY guard for JS / `as any` callers). The compile-time rejection of an unknown group for a
+    // NARROW registry is asserted separately in types.probe.ts.
     const { action } = createActionRegistry({
       createContext: async () => ({ db: {}, userId: 'u1' }),
-      revalidation: { tasks: { tags: ['tasks'] } },
     });
 
     const act = action(async () => 'ok', { revalidate: 'nope' });

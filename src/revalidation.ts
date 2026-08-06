@@ -20,20 +20,27 @@ export type RevalidationGroup = { tags?: string[]; paths?: (string | PathTarget)
 /** The app's named cache-group map, injected via `createActionRegistry`. */
 export type RevalidationGroups = Record<string, RevalidationGroup>;
 
+/** Extract only concrete string keys; a widened `Record<string, ...>` still accepts any group. */
+export type RevalidationGroupName<G extends RevalidationGroups = RevalidationGroups> =
+  Extract<keyof G, string>;
+
 /**
  * What an action declares. A bare string is a group name; the objects target one
  * tag / path directly (escape hatch for one-off invalidations).
  */
-export type RevalidationTarget = string | { tag: string } | PathTarget;
+export type RevalidationTarget<G extends RevalidationGroups = RevalidationGroups> =
+  | RevalidationGroupName<G>
+  | { tag: string }
+  | PathTarget;
 
 /**
  * The `revalidate` option on an action. May be result-dependent via a function.
  * Omitting it entirely means "revalidate nothing" (opt-out is explicit).
  */
-export type RevalidationSpec =
-  | RevalidationTarget
-  | RevalidationTarget[]
-  | ((result: unknown) => RevalidationTarget | RevalidationTarget[]);
+export type RevalidationSpec<G extends RevalidationGroups = RevalidationGroups> =
+  | RevalidationTarget<G>
+  | RevalidationTarget<G>[]
+  | ((result: unknown) => RevalidationTarget<G> | RevalidationTarget<G>[]);
 
 function isPathTarget(t: RevalidationTarget): t is PathTarget {
   return typeof t === 'object' && 'path' in t;
