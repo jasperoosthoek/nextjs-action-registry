@@ -304,6 +304,101 @@ noIdResource.get({ slug: 'x' });
 // @ts-expect-error - scope is required
 reg2.defineResource<Task>()({ table: 'x', actions: { get: true } });
 
+// ── parent scope (ownedVia) ─────────────────────────────────────────────────────
+
+// A registry whose `scopes` map includes a resolver usable as a parent-scope resolver
+// (`(ctx, parentId: string) => Promise<string | number>`), plus a few that AREN'T, each for a
+// different reason — see the rejections below.
+const reg3 = createActionRegistry({
+  createContext: async (): Promise<{ db: DB; userId: string }> => ({ db: { marker: 'db' }, userId: 'u' }),
+  adapter: {} as Adapter<DB>,
+  scopes: {
+    list: async (ctx, listId: string) => listId, // qualifies: validates + returns the parent id
+    orgAndUser: async (ctx, orgId: string, userId: string) => `${orgId}:${userId}`, // extra required arg
+    numericParent: async (ctx, parentId: number) => parentId, // parent-id arg isn't a string
+    maybeList: async (ctx, listId: string): Promise<string | null> => (listId ? listId : null), // nullable return
+  },
+  revalidation: { items: { tags: ['items'] } },
+});
+
+type Item = { id: string; title: string; done: boolean; list_id: string };
+
+const items = reg3.defineResource<Item>()({
+  table: 'items',
+  scope: { column: 'list_id', ownedVia: 'list' },
+  writableFields: ['title', 'done'],
+  actions: { list: true, get: true, create: true, update: true, remove: true },
+  revalidate: 'items',
+});
+
+// Parent-scoped ops gain a leading `parentId` argument on every generated op:
+const _itemsList: (parentId: string) => Promise<Item[]> = items.list;
+const _itemsGet: (parentId: string, id: string | Pick<Item, 'id'>) => Promise<Item | null> = items.get;
+const _itemsCreate: (
+  parentId: string,
+  input: { title: string; done: boolean },
+) => Promise<Item> = items.create;
+const _itemsUpdate: (
+  parentId: string,
+  id: string | Pick<Item, 'id'>,
+  input: Partial<{ title: string; done: boolean }>,
+) => Promise<Item> = items.update;
+const _itemsRemove: (parentId: string, id: string | Pick<Item, 'id'>) => Promise<void> = items.remove;
+
+items.list('list1');
+items.get('list1', 'item1');
+items.create('list1', { title: 'x', done: false });
+items.update('list1', 'item1', { done: true });
+items.remove('list1', 'item1');
+
+// @ts-expect-error - a parent-scoped op requires the leading parentId, not just the id
+items.get('item1');
+
+// ownedVia must reference a REGISTERED scope resolver:
+reg3.defineResource<Item>()({
+  table: 'items_unregistered',
+  // @ts-expect-error - 'nope' is not a key of reg3's scopes map
+  scope: { column: 'list_id', ownedVia: 'nope' },
+  writableFields: ['title', 'done'],
+  actions: { list: true },
+});
+
+// ownedVia must reference a SHAPE-COMPATIBLE resolver — `ParentScopeKey<S>` rejects each of these
+// for a different reason (see reg3's `scopes` above):
+reg3.defineResource<Item>()({
+  table: 'items_extra_arg',
+  // @ts-expect-error - orgAndUser requires an extra arg beyond (ctx, parentId)
+  scope: { column: 'list_id', ownedVia: 'orgAndUser' },
+  writableFields: ['title', 'done'],
+  actions: { list: true },
+});
+
+reg3.defineResource<Item>()({
+  table: 'items_numeric_parent',
+  // @ts-expect-error - numericParent's parent-id arg is a number, not a string
+  scope: { column: 'list_id', ownedVia: 'numericParent' },
+  writableFields: ['title', 'done'],
+  actions: { list: true },
+});
+
+reg3.defineResource<Item>()({
+  table: 'items_nullable_return',
+  // @ts-expect-error - maybeList can return null; a parent-scope resolver must throw, never return null
+  scope: { column: 'list_id', ownedVia: 'maybeList' },
+  writableFields: ['title', 'done'],
+  actions: { list: true },
+});
+
+// A resource whose registry has NO usable scope resolvers at all can't declare parent scope —
+// ParentScopeKey<{}> is `never`, so ownedVia has no valid value to offer:
+reg2.defineResource<Item>()({
+  table: 'items_no_scopes',
+  // @ts-expect-error - reg2 has no `scopes` map, so no ownedVia target exists
+  scope: { column: 'list_id', ownedVia: 'list' },
+  writableFields: ['title', 'done'],
+  actions: { list: true },
+});
+
 // 'public' is the explicit unscoped opt-out:
 const _pub = reg2.defineResource<Task>()({ table: 'catalog', scope: 'public', actions: { list: true } });
 const _pubList: () => Promise<Task[]> = _pub.list;

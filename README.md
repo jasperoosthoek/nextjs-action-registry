@@ -153,6 +153,44 @@ await update(task.taskId, { completed: true }); // bare id value
 await update(task, { completed: true });        // the row itself — taskId is read from it
 ```
 
+## Parent-scoped resources
+
+For **transitive ownership** — a child row owned via a parent the user owns (e.g. a list's items,
+where `items.list_id` isn't the user directly) — `scope` accepts a parent form:
+
+```ts
+const { defineResource, action } = createActionRegistry({
+  createContext,
+  adapter,
+  scopes: {
+    // Throws if `listId` isn't owned by ctx.userId; returns the validated id.
+    list: (ctx, listId: string) => assertOwnsList(ctx.db, ctx.userId, listId),
+  },
+});
+
+const items = defineResource<Item>()({
+  table: 'items',
+  scope: { column: 'list_id', ownedVia: 'list' }, // ownedVia names a registered scopes resolver
+  writableFields: ['title', 'done'],
+  actions: { list: true, get: true, create: true, update: true, remove: true },
+});
+
+// Every generated op gains a leading parentId argument:
+await items.list(listId);
+await items.get(listId, itemId);
+await items.create(listId, { title: 'x', done: false });
+await items.update(listId, itemId, { done: true });
+await items.remove(listId, itemId);
+```
+
+`ownedVia` must name a `scopes` resolver callable as `(parentId: string) => Promise<string |
+number>` — type-checked at the `defineResource` config site (an unregistered name, or a resolver
+with an incompatible shape, is a compile error). The resolver **MUST throw** on a foreign parent
+(never return `null`/`undefined` — it has no "no parent" case): `defineResource` calls it
+**before** touching the adapter, and uses its *validated* return value as the ownership filter, so
+a caller-supplied parent id can never reach a filter unchecked. No `Adapter<DB>` change — parent
+scope reuses the same `ScopeFilter` shape as user scope; only what fills `value` differs.
+
 ## Writing an adapter
 
 `supabaseAdapter` is the reference. A custom adapter (Drizzle, Prisma, raw SQL) implements
@@ -187,16 +225,18 @@ expect(report.failed).toEqual([]);
 ## Limitations (v0.x)
 
 Generated CRUD is intentionally narrow while the core is proven; use a bespoke `action()` for
-anything outside it.
+anything outside it. Transitive ownership (a child row owned via a parent the user owns) IS
+supported — see [Parent-scoped resources](#parent-scoped-resources) — the limitations below are
+about what's still not generated.
 
 **Deferred** — not supported today; revisit if a real app needs it:
 
-- **Single-column ownership only.** `scope` is one owner column. Composite/parent scoping (e.g.
-  `org_id` *and* `owner_id`) isn't generated — handle it today with `action()` + `ctx.scope.*`
-  (the Quick Start's `org` scope above is exactly this pattern).
+- **Composite ownership.** Two independent, both-required owner columns (e.g. `org_id` *and*
+  `owner_id`, neither transitive) isn't generated — handle it today with `action()` +
+  `ctx.scope.*` (the Quick Start's `org` scope above is exactly this pattern).
 - **Single-column primary key.** `idField` (default `'id'`) configures which column
   `get`/`update`/`remove` key on, but it's still exactly one column — composite PKs remain
-  unsupported (same rationale as single-column `scope` above) — use a bespoke `action()`.
+  unsupported (same rationale as composite ownership above) — use a bespoke `action()`.
 
 **By design** — not a gap, a deliberate boundary:
 

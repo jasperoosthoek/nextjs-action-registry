@@ -2,6 +2,21 @@
 
 All notable changes to `@jasperoosthoek/nextjs-action-registry`.
 
+## 0.0.12
+
+- **Parent-scoped resources (`ownedVia`):** `scope` accepts `{ column, ownedVia }` for transitive
+  ownership — a child row owned via a parent the user owns (e.g. an item owned via a list, where
+  the item has no `user_id` of its own). `ownedVia` names a registered `scopes` resolver,
+  type-checked at the `defineResource` config site as callable `(parentId: string) => Promise<string
+  | number>` (an unregistered name, or a resolver with an incompatible shape, is a compile error).
+  Generated ops gain a leading `parentId` argument (`items.list(listId)`, `items.get(listId, id)`,
+  `items.create(listId, input)`, …); the resolver runs — and MUST throw on a foreign parent — before
+  the adapter is ever touched, and its *validated* return value becomes the ownership filter (never
+  the raw caller-supplied id). No `Adapter<DB>` change: parent scope reuses the exact same
+  `ScopeFilter` shape as user scope, only what fills `value` differs. Retires the "single-column
+  ownership only" limitation for the transitive-ownership case (composite ownership — two
+  independent required owner columns — remains a documented limitation).
+
 ## 0.0.11
 
 - **Configurable primary key (`idField`):** resources can declare `idField` to key

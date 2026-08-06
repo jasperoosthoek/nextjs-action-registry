@@ -42,6 +42,22 @@ export const memAdapter: Adapter<null> = {
   },
 };
 
+// Validates that `listId` belongs to `userId` — the in-memory equivalent of a real app's ownedVia
+// resolver querying the parent table. Throws on a missing or foreign list (the security linchpin
+// for parent-scoped `items`; wired into the registry's `scopes.list`).
+export function assertOwnsList(userId: string, listId: string): string {
+  const list = tableRows('lists').find((r) => r.id === listId);
+  if (!list || list.owner_id !== userId) throw new Error('List not found');
+  return listId;
+}
+
+// Looks up a demo user's first seeded list — builds the "open another user's list" link without
+// hardcoding a row id (which would drift as the shared `seq` counter above changes).
+export function firstListIdFor(userId: string): string | undefined {
+  const list = tableRows('lists').find((r) => r.owner_id === userId);
+  return typeof list?.id === 'string' ? list.id : undefined;
+}
+
 // Filters to `userId`'s own rows before swapping, so a caller can't reorder another tenant's tasks.
 export function moveTask(userId: string, id: string, direction: 'up' | 'down'): void {
   const rows = tableRows('tasks');
@@ -78,6 +94,20 @@ function seed(): void {
   tableRows('notes').push(
     note('alice', 'Standup notes', 'Ship the CSV export by Friday.'),
     note('bob', 'Ideas', 'Try a caching layer for the dashboard.'),
+  );
+
+  const list = (owner_id: string, name: string) => ({ id: String(seq++), name, owner_id });
+  const aliceGroceries = list('alice', 'Groceries');
+  const aliceTrip = list('alice', 'Weekend trip');
+  const bobRenovation = list('bob', 'Home renovation');
+  tableRows('lists').push(aliceGroceries, aliceTrip, bobRenovation);
+
+  const item = (list_id: string, title: string, done = false) => ({ id: String(seq++), title, done, list_id });
+  tableRows('items').push(
+    item(aliceGroceries.id, 'Milk'),
+    item(aliceGroceries.id, 'Eggs', true),
+    item(aliceTrip.id, 'Book flights'),
+    item(bobRenovation.id, 'Paint the fence'),
   );
 }
 seed();

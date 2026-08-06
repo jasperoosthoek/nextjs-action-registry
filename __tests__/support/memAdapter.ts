@@ -7,7 +7,13 @@ type Row = Record<string, unknown>;
 const matches = (row: Row, scope: ScopeFilter): boolean =>
   scope === null || row[scope.column] === scope.value;
 
-export function createMemAdapter(): { adapter: Adapter<null>; reset: () => void } {
+export function createMemAdapter(): {
+  adapter: Adapter<null>;
+  reset: () => void;
+  /** Read a table's rows directly — lets a test build a realistic ownedVia resolver (querying the
+   * parent table, the way a real app's resolver queries its DB) instead of hardcoding pass/fail. */
+  rows: (table: string) => Row[];
+} {
   const tables: Record<string, Row[]> = {};
   let seq = 1;
   const rowsOf = (name: string): Row[] => (tables[name] ??= []);
@@ -49,5 +55,6 @@ export function createMemAdapter(): { adapter: Adapter<null>; reset: () => void 
       for (const k of Object.keys(tables)) delete tables[k];
       seq = 1;
     },
+    rows: rowsOf,
   };
 }

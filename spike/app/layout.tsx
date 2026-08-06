@@ -18,6 +18,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <Link href="/notes" className="hover:text-indigo-600">
                 Notes
               </Link>
+              <Link href="/lists" className="hover:text-indigo-600">
+                Lists
+              </Link>
             </nav>
             <UserSwitcher current={userId} />
           </div>

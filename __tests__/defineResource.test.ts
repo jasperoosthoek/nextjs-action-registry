@@ -288,7 +288,7 @@ describe('defineResource — generated CRUD (v0.0.2)', () => {
         idField: 'taskId',
         actions: { get: true },
       });
-      await expect(tasks2.get({} as never)).rejects.toThrow(/missing "taskId"/);
+      await expect(tasks2.get({} as never)).rejects.toThrow(/"taskId" is missing/);
     });
 
     it('a row with a null idField value throws', async () => {
@@ -300,7 +300,7 @@ describe('defineResource — generated CRUD (v0.0.2)', () => {
         idField: 'taskId',
         actions: { get: true },
       });
-      await expect(tasks2.get({ taskId: null } as never)).rejects.toThrow(/missing "taskId"/);
+      await expect(tasks2.get({ taskId: null } as never)).rejects.toThrow(/"taskId" is missing/);
     });
 
     it('a row with a non-primitive idField value throws', async () => {
@@ -313,6 +313,140 @@ describe('defineResource — generated CRUD (v0.0.2)', () => {
         actions: { get: true },
       });
       await expect(tasks2.get({ taskId: {} } as never)).rejects.toThrow(/must be a string or number/);
+    });
+  });
+
+  describe('parent scope (ownedVia)', () => {
+    type Item = { id: string; title: string; done: boolean; list_id: string };
+
+    function setupItems(
+      adapter: Adapter<{ tag: 'db' }>,
+      list: (ctx: unknown, listId: string) => Promise<string>,
+    ) {
+      const { defineResource } = createActionRegistry({
+        createContext: async () => ({ db: { tag: 'db' as const }, userId: 'u1' }),
+        adapter,
+        scopes: { list },
+        revalidation: { items: { tags: ['items'] } },
+      });
+      return defineResource<Item>()({
+        table: 'items',
+        scope: { column: 'list_id', ownedVia: 'list' },
+        writableFields: ['title', 'done'],
+        actions: { list: true, get: true, create: true, update: true, remove: true },
+        revalidate: 'items',
+      });
+    }
+
+    it('the resolver runs before the adapter, and its VALIDATED return becomes the filter value', async () => {
+      const { adapter, calls } = makeFakeAdapter();
+      const items = setupItems(adapter, async (_ctx, listId) => `validated-${listId}`);
+
+      await items.list('list1');
+
+      const call = calls.find((c) => c.op === 'list')!;
+      // Filter value is the resolver's RETURN (canonicalized), not the raw 'list1' input (DQ2).
+      expect(call.args[2]).toEqual({ scope: { column: 'list_id', value: 'validated-list1' } });
+    });
+
+    it('a throwing resolver rejects before the adapter is ever called', async () => {
+      const { adapter, calls } = makeFakeAdapter();
+      const items = setupItems(adapter, async () => {
+        throw new Error('List not found');
+      });
+
+      await expect(items.list('foreign-list')).rejects.toThrow('List not found');
+      expect(calls).toHaveLength(0);
+    });
+
+    it('get/create/update/remove all resolve the parent before dispatching, and pass the id/input through', async () => {
+      const { adapter, calls } = makeFakeAdapter();
+      const items = setupItems(adapter, async (_ctx, listId) => listId);
+
+      await items.get('list1', 'item1');
+      await items.create('list1', { title: 'x', done: false });
+      await items.update('list1', 'item1', { title: 'y' });
+      await items.remove('list1', 'item1');
+
+      const g = calls.find((c) => c.op === 'get')!;
+      const c = calls.find((c) => c.op === 'create')!;
+      const u = calls.find((c) => c.op === 'update')!;
+      const r = calls.find((c) => c.op === 'remove')!;
+      expect(g.args[3]).toBe('item1'); // the item id, not swallowed by the parentId split
+      expect(g.args[4]).toEqual({ scope: { column: 'list_id', value: 'list1' } });
+      expect(c.args[3]).toEqual({ title: 'x', done: false });
+      expect(c.args[4]).toEqual({ scope: { column: 'list_id', value: 'list1' } });
+      expect(u.args[3]).toBe('item1');
+      expect(u.args[4]).toEqual({ title: 'y' });
+      expect(u.args[5]).toEqual({ scope: { column: 'list_id', value: 'list1' } });
+      expect(r.args[3]).toBe('item1');
+      expect(r.args[4]).toEqual({ scope: { column: 'list_id', value: 'list1' } });
+    });
+
+    it('a resolver that returns undefined/null/an object fails LOUD instead of a bogus filter (JS/unsafe-caller simulation)', async () => {
+      const { adapter } = makeFakeAdapter();
+
+      // `ParentScopeKey<S>` forbids these honestly (no type-safe way to declare such a resolver),
+      // so `as never` is the JS/unsafe-caller simulation — there is no type-honest path here.
+      const itemsUndefined = setupItems(adapter, async () => undefined as never);
+      await expect(itemsUndefined.list('list1')).rejects.toThrow(/is missing/);
+
+      const itemsNull = setupItems(adapter, async () => null as never);
+      await expect(itemsNull.list('list1')).rejects.toThrow(/is missing/);
+
+      const itemsObject = setupItems(adapter, async () => ({}) as never);
+      await expect(itemsObject.list('list1')).rejects.toThrow(/must be a string or number/);
+    });
+
+    it('writableFields containing the parent FK column throws (#idField/#ownedVia)', () => {
+      const { adapter } = makeFakeAdapter();
+      const { defineResource } = createActionRegistry({
+        createContext: async () => ({ db: { tag: 'db' as const }, userId: 'u1' }),
+        adapter,
+        scopes: { list: async (_ctx: unknown, listId: string) => listId },
+      });
+      expect(() =>
+        defineResource<Item>()({
+          table: 'items',
+          scope: { column: 'list_id', ownedVia: 'list' },
+          writableFields: ['title', 'list_id'],
+          actions: { create: true },
+        }),
+      ).toThrow(/never writable/);
+    });
+
+    it('ownedVia: "" (JS/unsafe-caller) rejects — must NOT silently fall back to filtering by ctx.userId', async () => {
+      const { adapter, calls } = makeFakeAdapter();
+      const { defineResource } = createActionRegistry({
+        createContext: async () => ({ db: { tag: 'db' as const }, userId: 'u1' }),
+        adapter,
+        scopes: { list: async (_ctx: unknown, listId: string) => listId },
+      });
+      const items = defineResource<Item>()({
+        table: 'items',
+        // `ownedVia` is type-required to be a real key; cast simulates a JS / `as any` caller
+        // passing an empty string (falsy, but NOT "absent" — must still be treated as parent scope).
+        scope: { column: 'list_id', ownedVia: '' as never },
+        actions: { list: true },
+      });
+      await expect(items.list('list1')).rejects.toThrow(/not a registered scope resolver/);
+      expect(calls).toHaveLength(0); // never reached the adapter with a bogus `list_id = ctx.userId` filter
+    });
+
+    it('a non-string ownedVia (JS/unsafe-caller) throws at definition time', () => {
+      const { adapter } = makeFakeAdapter();
+      const { defineResource } = createActionRegistry({
+        createContext: async () => ({ db: { tag: 'db' as const }, userId: 'u1' }),
+        adapter,
+        scopes: { list: async (_ctx: unknown, listId: string) => listId },
+      });
+      expect(() =>
+        defineResource<Item>()({
+          table: 'items',
+          scope: { column: 'list_id', ownedVia: 42 } as never,
+          actions: { list: true },
+        }),
+      ).toThrow(/`scope\.ownedVia` must be a string/);
     });
   });
 
