@@ -21,7 +21,10 @@ function makeFakeAdapter(): { adapter: Adapter<{ tag: 'db' }>; calls: Call[] } {
       calls.push({ op, args });
       if (op === 'remove') return undefined;
       if (op === 'list') return [{ id: '1' }];
-      const values = args[2] ?? {};
+      if (op === 'get') return { id: 'row1' };
+      // "values"/"patch" payload index (idField was inserted right after `table`): create's is
+      // args[3], update's is args[4].
+      const values = (op === 'create' ? args[3] : op === 'update' ? args[4] : undefined) ?? {};
       return { id: 'row1', ...(typeof values === 'object' ? values : {}) };
     };
   const adapter = {
@@ -64,8 +67,9 @@ describe('defineResource — generated CRUD (v0.0.2)', () => {
 
     const call = calls.find((c) => c.op === 'create')!;
     expect(call.args[1]).toBe('tasks'); // table
-    expect(call.args[2]).toEqual({ title: 'x', done: false }); // narrowed — no owner_id, no bogus
-    expect(call.args[3]).toEqual({ scope: { column: 'owner_id', value: 'u1' } }); // owner from ctx
+    expect(call.args[2]).toBe('id'); // idField (default)
+    expect(call.args[3]).toEqual({ title: 'x', done: false }); // narrowed — no owner_id, no bogus
+    expect(call.args[4]).toEqual({ scope: { column: 'owner_id', value: 'u1' } }); // owner from ctx
     expect(revalidateTag).toHaveBeenCalledWith('tasks');
     expect(revalidatePath).toHaveBeenCalledWith('/tasks');
   });
@@ -84,9 +88,10 @@ describe('defineResource — generated CRUD (v0.0.2)', () => {
     await tasks.update('t1', { title: 'new', owner_id: 'x' } as never);
 
     const call = calls.find((c) => c.op === 'update')!;
-    expect(call.args[2]).toBe('t1'); // id
-    expect(call.args[3]).toEqual({ title: 'new' }); // owner_id stripped
-    expect(call.args[4]).toEqual({ scope: { column: 'user_id', value: 'u1' } });
+    expect(call.args[2]).toBe('id'); // idField (default)
+    expect(call.args[3]).toBe('t1'); // id
+    expect(call.args[4]).toEqual({ title: 'new' }); // owner_id stripped
+    expect(call.args[5]).toEqual({ scope: { column: 'user_id', value: 'u1' } });
   });
 
   it('remove scopes by owner + id and revalidates', async () => {
@@ -102,8 +107,9 @@ describe('defineResource — generated CRUD (v0.0.2)', () => {
     await tasks.remove('t1');
 
     const call = calls.find((c) => c.op === 'remove')!;
-    expect(call.args[2]).toBe('t1');
-    expect(call.args[3]).toEqual({ scope: { column: 'owner_id', value: 'u1' } });
+    expect(call.args[2]).toBe('id'); // idField (default)
+    expect(call.args[3]).toBe('t1');
+    expect(call.args[4]).toEqual({ scope: { column: 'owner_id', value: 'u1' } });
     expect(revalidateTag).toHaveBeenCalledWith('tasks');
   });
 
@@ -189,7 +195,125 @@ describe('defineResource — generated CRUD (v0.0.2)', () => {
       actions: { get: true },
     });
     await tasks.get('t1');
-    expect(calls[0]?.args[3]).toEqual({ scope: { column: 'owner_id', value: 'u1' } });
+    expect(calls[0]?.args[2]).toBe('id'); // idField (default)
+    expect(calls[0]?.args[4]).toEqual({ scope: { column: 'owner_id', value: 'u1' } });
+  });
+
+  describe('idField (configurable primary key)', () => {
+    type TaskCustomId = { taskId: string; title: string; done: boolean; owner_id: string };
+
+    it('idField defaults to "id" when not configured', async () => {
+      const { adapter, calls } = makeFakeAdapter();
+      const { defineResource } = setup(adapter);
+      const tasks = defineResource<Task>()({
+        table: 'tasks',
+        scope: { column: 'owner_id' },
+        actions: { get: true },
+      });
+      await tasks.get('t1');
+      expect(calls[0]?.args[2]).toBe('id');
+    });
+
+    it('the default (unconfigured idField) resource also accepts the row itself', async () => {
+      const { adapter, calls } = makeFakeAdapter();
+      const { defineResource } = setup(adapter);
+      const tasks = defineResource<Task>()({
+        table: 'tasks',
+        scope: { column: 'owner_id' },
+        actions: { get: true },
+      });
+      const row: Task = { id: 't1', title: 'x', done: false, owner_id: 'u1' };
+      await tasks.get(row);
+      const call = calls.find((c) => c.op === 'get')!;
+      expect(call.args[2]).toBe('id');
+      expect(call.args[3]).toBe('t1');
+    });
+
+    it('get/update/remove pass the configured idField to the adapter and resolve a bare id value', async () => {
+      const { adapter, calls } = makeFakeAdapter();
+      const { defineResource } = setup(adapter);
+      const tasks2 = defineResource<TaskCustomId>()({
+        table: 'tasks2',
+        scope: { column: 'owner_id' },
+        idField: 'taskId',
+        writableFields: ['title', 'done'],
+        actions: { get: true, update: true, remove: true },
+      });
+
+      await tasks2.get('t1');
+      await tasks2.update('t1', { title: 'x' });
+      await tasks2.remove('t1');
+
+      const g = calls.find((c) => c.op === 'get')!;
+      const u = calls.find((c) => c.op === 'update')!;
+      const r = calls.find((c) => c.op === 'remove')!;
+      expect(g.args[2]).toBe('taskId');
+      expect(g.args[3]).toBe('t1');
+      expect(u.args[2]).toBe('taskId');
+      expect(u.args[3]).toBe('t1');
+      expect(r.args[2]).toBe('taskId');
+      expect(r.args[3]).toBe('t1');
+    });
+
+    it('get/update/remove accept the row itself and resolve the configured idField', async () => {
+      const { adapter, calls } = makeFakeAdapter();
+      const { defineResource } = setup(adapter);
+      const tasks2 = defineResource<TaskCustomId>()({
+        table: 'tasks2',
+        scope: { column: 'owner_id' },
+        idField: 'taskId',
+        writableFields: ['title', 'done'],
+        actions: { get: true, update: true, remove: true },
+      });
+      const row: TaskCustomId = { taskId: 't1', title: 'x', done: false, owner_id: 'u1' };
+
+      await tasks2.get(row);
+      await tasks2.update(row, { title: 'y' });
+      await tasks2.remove(row);
+
+      const g = calls.find((c) => c.op === 'get')!;
+      const u = calls.find((c) => c.op === 'update')!;
+      const r = calls.find((c) => c.op === 'remove')!;
+      expect(g.args[3]).toBe('t1');
+      expect(u.args[3]).toBe('t1');
+      expect(r.args[3]).toBe('t1');
+    });
+
+    it('a row missing the configured idField throws', async () => {
+      const { adapter } = makeFakeAdapter();
+      const { defineResource } = setup(adapter);
+      const tasks2 = defineResource<TaskCustomId>()({
+        table: 'tasks2',
+        scope: { column: 'owner_id' },
+        idField: 'taskId',
+        actions: { get: true },
+      });
+      await expect(tasks2.get({} as never)).rejects.toThrow(/missing "taskId"/);
+    });
+
+    it('a row with a null idField value throws', async () => {
+      const { adapter } = makeFakeAdapter();
+      const { defineResource } = setup(adapter);
+      const tasks2 = defineResource<TaskCustomId>()({
+        table: 'tasks2',
+        scope: { column: 'owner_id' },
+        idField: 'taskId',
+        actions: { get: true },
+      });
+      await expect(tasks2.get({ taskId: null } as never)).rejects.toThrow(/missing "taskId"/);
+    });
+
+    it('a row with a non-primitive idField value throws', async () => {
+      const { adapter } = makeFakeAdapter();
+      const { defineResource } = setup(adapter);
+      const tasks2 = defineResource<TaskCustomId>()({
+        table: 'tasks2',
+        scope: { column: 'owner_id' },
+        idField: 'taskId',
+        actions: { get: true },
+      });
+      await expect(tasks2.get({ taskId: {} } as never)).rejects.toThrow(/must be a string or number/);
+    });
   });
 
   describe('fail closed (deny by default)', () => {
@@ -241,6 +365,36 @@ describe('defineResource — generated CRUD (v0.0.2)', () => {
           scope: { column: 'owner_id' },
           writableFields: ['title', 'id'],
           actions: { create: true },
+        }),
+      ).toThrow(/never writable/);
+    });
+
+    it('writableFields may include a literal "id" field when idField points elsewhere (#idField)', () => {
+      type LegacyTask = { taskId: string; id: string; title: string; owner_id: string };
+      const { adapter } = makeFakeAdapter();
+      const { defineResource } = setup(adapter);
+      expect(() =>
+        defineResource<LegacyTask>()({
+          table: 'legacy',
+          scope: { column: 'owner_id' },
+          idField: 'taskId',
+          writableFields: ['title', 'id'],
+          actions: { update: true },
+        }),
+      ).not.toThrow();
+    });
+
+    it('writableFields containing the CONFIGURED idField throws, not just a literal "id" (#idField)', () => {
+      type LegacyTask = { taskId: string; id: string; title: string; owner_id: string };
+      const { adapter } = makeFakeAdapter();
+      const { defineResource } = setup(adapter);
+      expect(() =>
+        defineResource<LegacyTask>()({
+          table: 'legacy',
+          scope: { column: 'owner_id' },
+          idField: 'taskId',
+          writableFields: ['title', 'taskId'],
+          actions: { update: true },
         }),
       ).toThrow(/never writable/);
     });

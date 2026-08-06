@@ -1,6 +1,6 @@
 {
   "name": "@jasperoosthoek/nextjs-action-registry",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "Declarative CRUD + custom server actions for Next.js — config-driven, auth/ownership/revalidation threaded once.",
   "author": "jasperoosthoek",
   "license": "MIT",

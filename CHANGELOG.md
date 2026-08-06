@@ -2,7 +2,24 @@
 
 All notable changes to `@jasperoosthoek/nextjs-action-registry`.
 
-## Unreleased
+## 0.0.11
+
+- **Configurable primary key (`idField`):** resources can declare `idField` to key
+  `get`/`update`/`remove` on a column other than `id` — must be a string- or number-valued,
+  non-optional, non-nullable key (`IdKey<T>`), type-checked at the `idField` config site.
+  Omitted (the default), those actions' signatures are unchanged (`(id: string) => …`);
+  configured, they accept either the bare id value or a `Pick<T, ID>`-shaped object (e.g. the row
+  itself) — so both `tasks.update(id, patch)` and `tasks.update(row, patch)` work. The id value is
+  always `string`, even for a `number`-valued `idField`. `idField` is forbidden from
+  `writableFields` (extends the existing forbidden-field guard, which previously hardcoded `'id'`).
+- **BREAKING: `Adapter<DB>` contract changed.** `get`/`create`/`update`/`remove` now take an
+  `idField: string` parameter (the resolved PK column name) right after `table`; `list` is
+  unchanged. Built-in `supabaseAdapter` is updated (including fixing a bug where `remove` always
+  selected a column literally named `'id'` to verify the delete, which would break for a real
+  custom `idField`). Custom adapters must update their method signatures — no compatibility shim
+  (pre-1.0, per project convention).
+
+## 0.0.10
 
 - **Typed revalidation groups:** when a registry's `revalidation` map is declared inline (or kept
   as a narrow `const` object, not widened to `RevalidationGroups`), `action()` and

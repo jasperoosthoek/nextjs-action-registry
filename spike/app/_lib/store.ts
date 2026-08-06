@@ -1,7 +1,7 @@
 import type { Adapter, ScopeFilter } from '@jasperoosthoek/nextjs-action-registry';
 
 // Module-level, so state persists across requests in the dev server.
-type Row = Record<string, unknown> & { id: string };
+type Row = Record<string, unknown>;
 
 const tables: Record<string, Row[]> = {};
 const tableRows = (name: string): Row[] => (tables[name] ??= []);
@@ -13,26 +13,30 @@ const matches = (row: Row, scope: ScopeFilter): boolean =>
 export const memAdapter: Adapter<null> = {
   list: async (_db, table, { scope }) => tableRows(table).filter((r) => matches(r, scope)),
 
-  get: async (_db, table, id, { scope }) =>
-    tableRows(table).find((r) => r.id === id && matches(r, scope)) ?? null,
+  get: async (_db, table, idField, id, { scope }) =>
+    tableRows(table).find((r) => r[idField] === id && matches(r, scope)) ?? null,
 
-  create: async (_db, table, values, { scope }) => {
+  create: async (_db, table, idField, values, { scope }) => {
     // Ownership injection: the owner column comes from `scope`, never the caller.
-    const row: Row = { ...values, id: String(seq++), ...(scope ? { [scope.column]: scope.value } : {}) };
+    const row: Row = {
+      ...values,
+      [idField]: String(seq++),
+      ...(scope ? { [scope.column]: scope.value } : {}),
+    };
     tableRows(table).push(row);
     return row;
   },
 
-  update: async (_db, table, id, patch, { scope }) => {
-    const row = tableRows(table).find((r) => r.id === id && matches(r, scope));
+  update: async (_db, table, idField, id, patch, { scope }) => {
+    const row = tableRows(table).find((r) => r[idField] === id && matches(r, scope));
     if (!row) throw new Error(`${table} ${id} not found`);
     Object.assign(row, patch);
     return row;
   },
 
-  remove: async (_db, table, id, { scope }) => {
+  remove: async (_db, table, idField, id, { scope }) => {
     const rows = tableRows(table);
-    const i = rows.findIndex((r) => r.id === id && matches(r, scope));
+    const i = rows.findIndex((r) => r[idField] === id && matches(r, scope));
     if (i < 0) throw new Error(`${table} ${id} not found`);
     rows.splice(i, 1);
   },

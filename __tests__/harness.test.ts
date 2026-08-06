@@ -59,7 +59,7 @@ describe('tenant-isolation harness (example-app contract test)', () => {
     // A broken adapter that IGNORES the scope filter on reads (leaks across tenants).
     const leaky: Adapter<null> = {
       ...adapter,
-      get: (db, table, id) => adapter.get(db, table, id, { scope: null }),
+      get: (db, table, idField, id) => adapter.get(db, table, idField, id, { scope: null }),
     };
     const asA = resourceFor('userA', adapter);
     const asB = resourceFor('userB', leaky); // shares the same store as A

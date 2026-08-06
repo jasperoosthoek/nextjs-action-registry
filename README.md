@@ -35,6 +35,7 @@ import type { Task } from '@/types';
 const tasks = defineResource<Task>()({
   table: 'tasks',
   scope: { column: 'owner_id' },                // configurable owner column (default 'user_id')
+  idField: 'id',                                // optional; defaults to 'id'
   writableFields: ['title', 'completed'],       // required for create/update — closes mass assignment
   readonlyFields: ['created_at', 'updated_at'], // optional app-managed columns, never writable
   actions: { create: true, update: true, remove: true },
@@ -134,6 +135,24 @@ forgotten. The wrapped fn must not call `cookies()`/`headers()`.
 const getRates = cachedRead(() => fetchRates(), { scopeKey: 'global', keyParts: ['rates'], tags: ['rates'], revalidate: 3600 });
 ```
 
+## Custom primary key
+
+`idField` defaults to `'id'`. Configure it to key `get`/`update`/`remove` on a different column —
+once set, those actions accept either the bare id value or the row itself:
+
+```ts
+const tasks = defineResource<Task>()({
+  table: 'tasks',
+  scope: { column: 'owner_id' },
+  idField: 'taskId',
+  writableFields: ['title', 'completed'],
+  actions: { get: true, update: true, remove: true },
+});
+
+await update(task.taskId, { completed: true }); // bare id value
+await update(task, { completed: true });        // the row itself — taskId is read from it
+```
+
 ## Writing an adapter
 
 `supabaseAdapter` is the reference. A custom adapter (Drizzle, Prisma, raw SQL) implements
@@ -141,6 +160,10 @@ const getRates = cachedRead(() => fetchRates(), { scopeKey: 'global', keyParts: 
 scope filter (cross-tenant `get` → `null`), `create` injects the ownership column (no spoofing),
 and `update`/`remove` reject a 0-row match (no silent cross-owner writes). **Verify any adapter
 with the tenant-isolation harness** (below) against a real DB — the type system can't check these.
+
+`get`/`create`/`update`/`remove` all receive `idField` — the resolved PK column (`'id'` unless the
+resource configures `idField`). A DB that auto-assigns the PK (e.g. Postgres) may ignore it; an
+adapter that self-assigns an id (e.g. an in-memory store) must assign the new row's id under it.
 
 ## Testing tenant isolation
 
@@ -164,12 +187,24 @@ expect(report.failed).toEqual([]);
 ## Limitations (v0.x)
 
 Generated CRUD is intentionally narrow while the core is proven; use a bespoke `action()` for
-anything outside it:
+anything outside it.
+
+**Deferred** — not supported today; revisit if a real app needs it:
 
 - **Single-column ownership only.** `scope` is one owner column. Composite/parent scoping (e.g.
-  `org_id` *and* `owner_id`) is post-v1 — handle it today with `action()` + `ctx.scope.*`.
-- **`id` primary key.** Generated `get`/`update`/`remove` key on an `id` column; tables with a
-  differently-named PK use a bespoke `action()`.
+  `org_id` *and* `owner_id`) isn't generated — handle it today with `action()` + `ctx.scope.*`
+  (the Quick Start's `org` scope above is exactly this pattern).
+- **Single-column primary key.** `idField` (default `'id'`) configures which column
+  `get`/`update`/`remove` key on, but it's still exactly one column — composite PKs remain
+  unsupported (same rationale as single-column `scope` above) — use a bespoke `action()`.
+
+**By design** — not a gap, a deliberate boundary:
+
+- **The id value is always `string`.** A `number`-valued column (e.g. a serial PK) is a valid
+  `idField` target, but `get`/`update`/`remove` still take/return the id as a `string` — pass a
+  numeric PK as its string form (`tasks.get('42')`, not `tasks.get(42)`). In practice this rarely
+  matters: route params and form values are already strings, and passing the row itself
+  (`tasks.update(task, patch)`) resolves a numeric id field internally with no caller-side cast.
 
 ## Scripts
 

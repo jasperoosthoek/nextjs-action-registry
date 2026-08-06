@@ -82,7 +82,7 @@ describe('supabaseAdapter', () => {
     const { db, calls } = makeDb({ maybeSingle: { data: row, error: null } });
 
     await expect(
-      supabaseAdapter.get(db, 'tasks', 't1', { scope: { column: 'owner_id', value: 'u1' } }),
+      supabaseAdapter.get(db, 'tasks', 'id', 't1', { scope: { column: 'owner_id', value: 'u1' } }),
     ).resolves.toEqual(row);
 
     expect(calls).toEqual([
@@ -94,7 +94,9 @@ describe('supabaseAdapter', () => {
     ]);
 
     const missing = makeDb({ maybeSingle: { data: null, error: null } });
-    await expect(supabaseAdapter.get(missing.db, 'tasks', 'missing', { scope: null })).resolves.toBeNull();
+    await expect(
+      supabaseAdapter.get(missing.db, 'tasks', 'id', 'missing', { scope: null }),
+    ).resolves.toBeNull();
   });
 
   it('create injects ownership and overwrites caller ownership input', async () => {
@@ -105,6 +107,7 @@ describe('supabaseAdapter', () => {
       supabaseAdapter.create(
         db,
         'tasks',
+        'id',
         { title: 'x', owner_id: 'attacker' },
         { scope: { column: 'owner_id', value: 'u1' } },
       ),
@@ -123,7 +126,7 @@ describe('supabaseAdapter', () => {
     const { db, calls } = makeDb({ single: { data: created, error: null } });
 
     await expect(
-      supabaseAdapter.create(db, 'catalog', { label: 'x' }, { scope: null }),
+      supabaseAdapter.create(db, 'catalog', 'id', { label: 'x' }, { scope: null }),
     ).resolves.toEqual(created);
 
     expect(calls[1]).toEqual({ method: 'insert', args: [{ label: 'x' }] });
@@ -137,6 +140,7 @@ describe('supabaseAdapter', () => {
       supabaseAdapter.update(
         db,
         'tasks',
+        'id',
         't1',
         { title: 'new' },
         { scope: { column: 'owner_id', value: 'u1' } },
@@ -157,7 +161,7 @@ describe('supabaseAdapter', () => {
     const { db, calls } = makeDb({ single: { data: { id: 't1' }, error: null } });
 
     await expect(
-      supabaseAdapter.remove(db, 'tasks', 't1', { scope: { column: 'owner_id', value: 'u1' } }),
+      supabaseAdapter.remove(db, 'tasks', 'id', 't1', { scope: { column: 'owner_id', value: 'u1' } }),
     ).resolves.toBeUndefined();
 
     expect(calls).toEqual([
@@ -173,8 +177,63 @@ describe('supabaseAdapter', () => {
   it('remove throws when the delete verification returns an error', async () => {
     const { db } = makeDb({ single: { data: null, error: { message: '0 rows' } } });
 
-    await expect(supabaseAdapter.remove(db, 'tasks', 't1', { scope: null })).rejects.toThrow(
+    await expect(supabaseAdapter.remove(db, 'tasks', 'id', 't1', { scope: null })).rejects.toThrow(
       '[supabaseAdapter] 0 rows',
     );
+  });
+});
+
+describe('supabaseAdapter — configurable idField', () => {
+  it('get filters by the configured idField, not a hardcoded "id"', async () => {
+    const row = { taskId: 't1' };
+    const { db, calls } = makeDb({ maybeSingle: { data: row, error: null } });
+
+    await expect(
+      supabaseAdapter.get(db, 'tasks2', 'taskId', 't1', { scope: { column: 'owner_id', value: 'u1' } }),
+    ).resolves.toEqual(row);
+
+    expect(calls).toEqual([
+      { method: 'from', args: ['tasks2'] },
+      { method: 'select', args: ['*'] },
+      { method: 'eq', args: ['taskId', 't1'] },
+      { method: 'eq', args: ['owner_id', 'u1'] },
+      { method: 'maybeSingle', args: [] },
+    ]);
+  });
+
+  it('update filters by the configured idField, not a hardcoded "id"', async () => {
+    const updated = { taskId: 't1', title: 'new' };
+    const { db, calls } = makeDb({ single: { data: updated, error: null } });
+
+    await expect(
+      supabaseAdapter.update(db, 'tasks2', 'taskId', 't1', { title: 'new' }, { scope: null }),
+    ).resolves.toEqual(updated);
+
+    expect(calls).toEqual([
+      { method: 'from', args: ['tasks2'] },
+      { method: 'update', args: [{ title: 'new' }] },
+      { method: 'eq', args: ['taskId', 't1'] },
+      { method: 'select', args: ['*'] },
+      { method: 'single', args: [] },
+    ]);
+  });
+
+  it('remove filters AND verifies the delete using the configured idField (fixes the hardcoded "id" bug)', async () => {
+    const { db, calls } = makeDb({ single: { data: { taskId: 't1' }, error: null } });
+
+    await expect(
+      supabaseAdapter.remove(db, 'tasks2', 'taskId', 't1', {
+        scope: { column: 'owner_id', value: 'u1' },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(calls).toEqual([
+      { method: 'from', args: ['tasks2'] },
+      { method: 'delete', args: [] },
+      { method: 'eq', args: ['taskId', 't1'] },
+      { method: 'eq', args: ['owner_id', 'u1'] },
+      { method: 'select', args: ['taskId'] },
+      { method: 'single', args: [] },
+    ]);
   });
 });

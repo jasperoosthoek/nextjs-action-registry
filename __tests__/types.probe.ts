@@ -179,15 +179,26 @@ reg2.defineResource<AuditedTask>()({
   actions: { create: true },
 });
 
-// Configured actions exist with the right signatures:
-const _get: (id: string) => Promise<Task | null> = tasks.get;
-const _rm: (id: string) => Promise<void> = tasks.remove;
+// Configured actions exist with the right signatures. get/update/remove accept a bare `string` id
+// OR the row itself (Pick<Task, 'id'>) even with idField unconfigured — Task has a usable 'id',
+// matching the runtime default (idKey defaults to 'id'); see the "T with no usable 'id'" probe
+// further down for the case where no row form is available at all.
+const _get: (id: string | Pick<Task, 'id'>) => Promise<Task | null> = tasks.get;
+const _rm: (id: string | Pick<Task, 'id'>) => Promise<void> = tasks.remove;
 // create input is the full writable allowlist (Pick<T, 'title' | 'done'>):
 const _cr: (input: { title: string; done: boolean }) => Promise<Task> = tasks.create;
 // update input is a PARTIAL of the allowlist — update some fields, not all:
-const _up: (id: string, input: Partial<{ title: string; done: boolean }>) => Promise<Task> = tasks.update;
+const _up: (
+  id: string | Pick<Task, 'id'>,
+  input: Partial<{ title: string; done: boolean }>,
+) => Promise<Task> = tasks.update;
 tasks.update('id', { title: 'x' }); // partial (only title) is valid
 tasks.update('id', {}); // empty is valid
+// the row itself also works with idField unconfigured (defaults to the 'id' key):
+const _defaultRow: Task = { id: 't1', title: 'x', done: false, owner_id: 'u1' };
+tasks.get(_defaultRow);
+tasks.update(_defaultRow, { title: 'y' });
+tasks.remove(_defaultRow);
 
 // create requires the full allowlist — a partial create is a type error:
 // @ts-expect-error - `done` is required on create
@@ -202,6 +213,92 @@ tasks.update('id', { owner_id: 'me' });
 // list was not configured → property does not exist:
 // @ts-expect-error - list not configured
 tasks.list;
+
+// ── idField (configurable primary key) ─────────────────────────────────────────
+
+type Task2 = { taskId: string; title: string; done: boolean; owner_id: string };
+
+const tasks2 = reg2.defineResource<Task2>()({
+  table: 'tasks2',
+  scope: { column: 'owner_id' },
+  idField: 'taskId',
+  writableFields: ['title', 'done'],
+  actions: { get: true, update: true, remove: true },
+});
+
+// bare id value accepted:
+tasks2.get('t1');
+// Pick<T, ID>-shaped object accepted:
+tasks2.get({ taskId: 't1' });
+// the full row is structurally assignable too (T is assignable to Pick<T, ID>):
+const _task2Row: Task2 = { taskId: 't1', title: 'x', done: false, owner_id: 'u1' };
+tasks2.update(_task2Row, { title: 'y' });
+
+// @ts-expect-error - id value stays `string` even for a configured idField, not T[ID]
+tasks2.get(123);
+// @ts-expect-error - an object without the configured key is not accepted
+tasks2.remove({ notTaskId: 't1' });
+
+// idField must be a string/number-valued, non-optional, non-nullable key (IdKey<T>) — each
+// rejection below is a DIFFERENT reason a key can fail that constraint, so each gets its own probe.
+type BadIdObject = { metadata: object; title: string; owner_id: string };
+reg2.defineResource<BadIdObject>()({
+  table: 'bad1',
+  scope: { column: 'owner_id' },
+  // @ts-expect-error - an object-valued field is not a valid idField target
+  idField: 'metadata',
+  actions: { get: true },
+});
+
+type BadIdOptional = { nickname?: string; title: string; owner_id: string };
+reg2.defineResource<BadIdOptional>()({
+  table: 'bad2',
+  scope: { column: 'owner_id' },
+  // @ts-expect-error - an optional field (T[K] includes undefined) is not a valid idField target
+  idField: 'nickname',
+  actions: { get: true },
+});
+
+type BadIdNullable = { legacyId: string | null; title: string; owner_id: string };
+reg2.defineResource<BadIdNullable>()({
+  table: 'bad3',
+  scope: { column: 'owner_id' },
+  // @ts-expect-error - a nullable field (string | null) is not a valid idField target
+  idField: 'legacyId',
+  actions: { get: true },
+});
+
+// A numeric or symbol KEY is rejected even when its VALUE type would otherwise qualify — idField
+// names a DB column (a string), so keyof T members that aren't string keys must never be offered.
+type BadIdNumericKey = { 42: string; title: string; owner_id: string };
+reg2.defineResource<BadIdNumericKey>()({
+  table: 'bad4',
+  scope: { column: 'owner_id' },
+  // @ts-expect-error - a numeric key is not a valid idField target (idField must name a string column)
+  idField: 42,
+  actions: { get: true },
+});
+
+declare const brandSym: unique symbol;
+type BadIdSymbolKey = { [brandSym]: string; title: string; owner_id: string };
+reg2.defineResource<BadIdSymbolKey>()({
+  table: 'bad5',
+  scope: { column: 'owner_id' },
+  // @ts-expect-error - a symbol key is not a valid idField target
+  idField: brandSym,
+  actions: { get: true },
+});
+
+// ── T with no usable 'id' at all, and idField unconfigured: falls back to `string` only ────────
+type NoId = { slug: string; title: string; owner_id: string };
+const noIdResource = reg2.defineResource<NoId>()({
+  table: 'no_id',
+  scope: { column: 'owner_id' },
+  actions: { get: true },
+});
+const _noIdGet: (id: string) => Promise<NoId | null> = noIdResource.get;
+// @ts-expect-error - NoId has no usable 'id' field, so only a bare string id is accepted
+noIdResource.get({ slug: 'x' });
 
 // scope is required (fail closed) — omitting it is a type error:
 // @ts-expect-error - scope is required

@@ -39,7 +39,7 @@ export function NoteRow({ note }: Props) {
             type="button"
             disabled={pending}
             onClick={run(async () => {
-              await notes.update(note.id, { title, body });
+              await notes.update(note, { title, body });
               setEditing(false);
             })}
             className="rounded-md bg-indigo-600 px-3 py-1 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
@@ -65,7 +65,7 @@ export function NoteRow({ note }: Props) {
           <button
             type="button"
             disabled={pending}
-            onClick={run(() => notes.remove(note.id))}
+            onClick={run(() => notes.remove(note))}
             className="text-red-500 hover:underline disabled:opacity-50"
           >
             Delete
