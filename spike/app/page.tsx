@@ -1,26 +1,22 @@
-import * as tasks from './actions';
-import { NewTask } from './new-task';
+import * as tasks from './actions/tasks';
+import { NewTask } from './_tasks/new-task';
+import { TaskRow } from './_tasks/task-row';
 
-// Server component: reads via `tasks.list()` and renders. `remove` is bound per-row into a form
-// (it takes an id, not FormData, and returns void — so it fits the form slot with no cast).
-export default async function Page() {
+export default async function TasksPage() {
   const items = await tasks.list();
 
   return (
-    <main style={{ fontFamily: 'system-ui', maxWidth: 480, margin: '2rem auto' }}>
-      <h1>Tasks ({items.length})</h1>
-      <NewTask create={tasks.create} />
-      <ul>
-        {items.map((t) => (
-          <li key={t.id}>
-            {t.title}
-            <form action={tasks.remove.bind(null, t.id)} style={{ display: 'inline' }}>
-              <button type="submit"> ✕</button>
-            </form>
-          </li>
+    <main className="mx-auto max-w-xl px-4 py-8">
+      <h1 className="text-2xl font-semibold">
+        Tasks <span className="font-normal text-slate-400">({items.length})</span>
+      </h1>
+      <NewTask />
+      <ul className="mt-6 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+        {items.map((t, i) => (
+          <TaskRow key={t.id} task={t} isFirst={i === 0} isLast={i === items.length - 1} />
         ))}
       </ul>
-      {items.length === 0 && <p>No tasks yet — add one above.</p>}
+      {items.length === 0 && <p className="mt-6 text-sm text-slate-500">No tasks yet — add one above.</p>}
     </main>
   );
 }

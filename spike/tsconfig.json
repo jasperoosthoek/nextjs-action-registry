@@ -21,7 +21,12 @@
     ],
     "allowJs": true,
     "resolveJsonModule": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "paths": {
+      "@/*": ["./*"],
+      "@jasperoosthoek/nextjs-action-registry": ["../src/index.ts"],
+      "@jasperoosthoek/nextjs-action-registry/testing": ["../src/testing.ts"]
+    }
   },
   "include": [
     "**/*.ts",

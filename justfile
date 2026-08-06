@@ -7,13 +7,21 @@ port := "3939"
 default:
     @just --list
 
+# Install the spike's standalone deps (Next/React/Tailwind — isolated from the library's own package.json)
+spike-install:
+    @cd spike && npm install
+
 # Run the spike app (dev server) → http://localhost:{{port}}
 spike port=port:
-    @cd spike && PORT={{port}} ../node_modules/.bin/next dev
+    @cd spike && PORT={{port}} npm run dev
 
 # Build the spike (the server-action registration check)
 spike-build:
-    @cd spike && ../node_modules/.bin/next build
+    @cd spike && npm run build
+
+# Typecheck the spike (its own tsconfig.json — separate from the library's)
+spike-typecheck:
+    @cd spike && npm run typecheck
 
 # Run unit + type tests
 test:
@@ -22,9 +30,9 @@ test:
 test-coverage:
     @npm test -- --coverage
 
-# Run the spike app production build through npm
+# Run the spike production build (alias for spike-build)
 test-spike:
-    @npm run test-spike
+    @just spike-build
 
 # Typecheck the library
 typecheck:

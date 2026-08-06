@@ -27,7 +27,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test-spike": "cd spike && ../node_modules/.bin/next build"
+    "test-spike": "npm --prefix spike run build"
   },
   "peerDependencies": {
     "next": ">=14"

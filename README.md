@@ -173,7 +173,7 @@ anything outside it:
 
 ## Scripts
 
-`just` lists tasks: `just test`, `just typecheck`, `just build`, `just spike`, `just spike-build`.
+`just` lists tasks
 
 ## License
 
