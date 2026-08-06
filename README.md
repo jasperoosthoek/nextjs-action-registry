@@ -85,6 +85,81 @@ Action names in telemetry: pass `name` in `ActionOptions` (generated actions are
   (e.g. Postgres RLS). NAR assumes a user-scoped client; a service-role client makes the app-level
   scope the *only* boundary.
 
+## Per-action options
+
+`action(handler, options)` (and, under the hood, generated CRUD) accept:
+
+- `revalidate` — cache invalidation on success (see below).
+- `name` — stable name for telemetry (generated actions are auto-named `"<table>.<op>"`).
+- `prepare(...args)` — validate/guard the input before the handler runs (**throw to reject**);
+  runs *after* auth, so unauthenticated calls never reach it. Transform values in the handler.
+- `onSuccess(result, ...args)` — app logic after success, before revalidation; a throw fails it.
+- `onError(error, ...args)` — app logic on failure; **only for post-auth failures** (an auth
+  failure can't trigger it), guarded so it never masks the original error.
+
+> Security: `onSuccess`/`onError` get the raw args/result for *logic* — never log them. Redacted
+> telemetry belongs on the registry-level `onError`, which only receives `{ action }`.
+
+## Revalidation
+
+Declare cache **groups** once (`revalidation` on the registry), then `revalidate` per action:
+
+```ts
+revalidation: { tasks: { tags: ['tasks'], paths: ['/tasks', { path: '/', type: 'layout' }] } }
+// per action:
+revalidate: 'tasks'                              // a group name
+revalidate: [{ tag: 'x' }, { path: '/y' }]       // direct targets / arrays
+revalidate: (result) => (result ? 'tasks' : [])  // result-dependent
+```
+
+## Caching reads
+
+Reads are **dynamic by default** (per-request; `revalidatePath` refreshes them). For an expensive
+or shared read, opt into the Data Cache with `cachedRead` — `scopeKey` is required and always in
+the cache key (the `userId` for per-user, `'global'` for shared), so per-user scoping can't be
+forgotten. The wrapped fn must not call `cookies()`/`headers()`.
+
+```ts
+const getRates = cachedRead(() => fetchRates(), { scopeKey: 'global', keyParts: ['rates'], tags: ['rates'], revalidate: 3600 });
+```
+
+## Writing an adapter
+
+`supabaseAdapter` is the reference. A custom adapter (Drizzle, Prisma, raw SQL) implements
+`Adapter<DB>` — and MUST uphold the security contract documented on the type: reads apply the
+scope filter (cross-tenant `get` → `null`), `create` injects the ownership column (no spoofing),
+and `update`/`remove` reject a 0-row match (no silent cross-owner writes). **Verify any adapter
+with the tenant-isolation harness** (below) against a real DB — the type system can't check these.
+
+## Testing tenant isolation
+
+The `@jasperoosthoek/nextjs-action-registry/testing` subpath ships a vector-driven harness. Wire a
+seeded two-tenant fixture and assert `report.failed` is empty — run it against a **real test DB**
+as your pre-release gate:
+
+```ts
+import { checkTenantIsolation } from '@jasperoosthoek/nextjs-action-registry/testing';
+
+const report = await checkTenantIsolation({
+  unauthenticated: [{ name: 'get', run: () => unauth.get(aRowId) }],
+  crossTenant: [
+    { name: 'get A as B', run: () => asB.get(aRowId), expect: 'empty' },
+    { name: 'remove A as B', run: () => asB.remove(aRowId), expect: 'reject' },
+  ],
+});
+expect(report.failed).toEqual([]);
+```
+
+## Limitations (v0.x)
+
+Generated CRUD is intentionally narrow while the core is proven; use a bespoke `action()` for
+anything outside it:
+
+- **Single-column ownership only.** `scope` is one owner column. Composite/parent scoping (e.g.
+  `org_id` *and* `owner_id`) is post-v1 — handle it today with `action()` + `ctx.scope.*`.
+- **`id` primary key.** Generated `get`/`update`/`remove` key on an `id` column; tables with a
+  differently-named PK use a bespoke `action()`.
+
 ## Scripts
 
 `just` lists tasks: `just test`, `just typecheck`, `just build`, `just spike`, `just spike-build`.

@@ -2,6 +2,18 @@
 
 All notable changes to `@jasperoosthoek/nextjs-action-registry`.
 
+## 0.0.9
+
+- **Adapter contract hardened (docs):** the `Adapter` type now documents the per-method security
+  invariants an adapter author must uphold — reads apply the scope filter, `create` injects the
+  ownership column, `update`/`remove` reject a 0-row match — with a pointer to verify them via the
+  tenant-isolation harness (the type system can't check these).
+- **Composite-scope decision:** for v0.1.0, generated CRUD stays single-column-ownership + `id`-PK
+  by design; composite/parent scoping and custom primary keys are post-v1 — use a bespoke
+  `action()` + `ctx.scope.*` for those today.
+- **README expanded:** per-action options (`prepare`/`onSuccess`/`onError`), revalidation, caching
+  (`cachedRead`), writing an adapter, the tenant-isolation harness, and the limitations above.
+
 ## 0.0.8
 
 - **Tenant-isolation harness** (`@jasperoosthoek/nextjs-action-registry/testing`) —
