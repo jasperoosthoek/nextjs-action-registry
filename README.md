@@ -61,12 +61,12 @@ export const reorderTasks = action(
 
 ## Error handling
 
-NAR is **throw-based**: actions throw on failure and return the value on success. Two things to
+nextjs-action-registry is **throw-based**: actions throw on failure and return the value on success. Two things to
 know:
 
-- **Client-facing error redaction is Next.js's job, not NAR's.** In production Next replaces a
+- **Client-facing error redaction is Next.js's job, not nextjs-action-registry's.** In production Next replaces a
   thrown server-action error with a generic message + digest to the client and logs the full error
-  server-side; in development it shows the error for debugging. NAR deliberately does **not**
+  server-side; in development it shows the error for debugging. nextjs-action-registry deliberately does **not**
   re-wrap or sanitize thrown errors — doing so would break Next's dev visibility and its
   production digest correlation.
 - **`onError` is the server-side telemetry hook.** Provide `onError(error, { action })` on the
@@ -89,7 +89,7 @@ Action names in telemetry: pass `name` in `ActionOptions` (generated actions are
 - **Readonly fields:** add `readonlyFields` for app-managed columns such as timestamps or counters;
   generated `create`/`update` reject any overlap with `writableFields`.
 - **Defense in depth:** app-level scope filters sit alongside the datasource's own row security
-  (e.g. Postgres RLS). NAR assumes a user-scoped client; a service-role client makes the app-level
+  (e.g. Postgres RLS). nextjs-action-registry assumes a user-scoped client; a service-role client makes the app-level
   scope the *only* boundary.
 
 ## Per-action options

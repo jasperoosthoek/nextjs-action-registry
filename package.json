@@ -4,6 +4,11 @@
   "description": "Declarative CRUD + custom server actions for Next.js — config-driven, auth/ownership/revalidation threaded once.",
   "author": "jasperoosthoek",
   "license": "MIT",
+  "repository": "https://github.com/jasperoosthoek/nextjs-action-registry",
+  "homepage": "https://github.com/jasperoosthoek/nextjs-action-registry#readme",
+  "bugs": {
+    "url": "https://github.com/jasperoosthoek/nextjs-action-registry/issues"
+  },
   "type": "module",
   "files": [
     "src/",
@@ -27,7 +32,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test-spike": "npm --prefix spike run build"
+    "test-spike": "npm --prefix spike run build",
+    "prepublishOnly": "npm test && npm run build"
   },
   "peerDependencies": {
     "next": ">=14"
@@ -48,5 +54,11 @@
     "revalidate",
     "declarative",
     "authorization"
-  ]
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }
